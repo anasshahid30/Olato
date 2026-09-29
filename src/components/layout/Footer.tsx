@@ -40,7 +40,7 @@ export function Footer() {
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-[#15151A] uppercase tracking-wider">Platform</h4>
             <ul className="space-y-2 text-sm text-[#6F7078]">
-              <li><Link href="/auth/signin" className="hover:text-[#5B5CE2] transition-colors">Member Sign In</Link></li>
+              <li><Link href="/auth/login" className="hover:text-[#5B5CE2] transition-colors">Member Sign In</Link></li>
               <li><Link href="/profile" className="hover:text-[#5B5CE2] transition-colors">User Account Settings</Link></li>
               <li><Link href="/admin" className="hover:text-[#5B5CE2] transition-colors font-semibold text-[#5B5CE2]">Merchant Admin Portal</Link></li>
             </ul>

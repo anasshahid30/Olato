@@ -5,159 +5,266 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
-import { Button } from '@/components/ui/Button';
+import { MagneticButton } from '@/components/ui/MagneticButton';
 import { useAuth } from '@/context/AuthContext';
 import { useSavedDeals } from '@/context/SavedDealsContext';
 import { useLocation } from '@/context/LocationContext';
-import { User, MapPin, Heart, GraduationCap, Shield, LogOut, Settings, Check } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Heart,
+  MapPin,
+  GraduationCap,
+  CreditCard,
+  LogOut,
+  Shield,
+  CheckCircle2,
+  Bell,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, signOut, updateProfile } = useAuth();
+  const { user, signOut, updateProfile, isAdmin } = useAuth();
   const { savedCount } = useSavedDeals();
-  const { activeHub, setHub, allHubs } = useLocation();
+  const { activeHub, allHubs, setHub } = useLocation();
 
   const [studentVerified, setStudentVerified] = useState(user?.studentVerified ?? true);
+  const [preferredBank, setPreferredBank] = useState('Standard Chartered');
+  const [notifyDeals, setNotifyDeals] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col bg-[#F7F7FA]">
+      <div className="min-h-screen flex flex-col bg-[#FAF9F6] text-[#15151A]">
         <Navbar />
-        <div className="flex-1 flex flex-col items-center justify-center p-8">
-          <User className="w-12 h-12 text-[#5B5CE2] mb-3" />
-          <h2 className="text-xl font-bold text-[#15151A]">Please Sign In</h2>
-          <p className="text-sm text-[#6F7078] mb-6">Sign in to view your profile and saved preferences.</p>
-          <Link href="/auth/signin">
-            <Button variant="primary">Sign In</Button>
+        <main className="flex-1 max-w-lg mx-auto px-4 py-20 text-center space-y-4">
+          <h2 className="text-2xl font-bold">Please Sign In</h2>
+          <p className="text-sm text-[#6F7078]">You need to be logged in to view your profile and saved discount preferences.</p>
+          <Link href="/auth/login">
+            <MagneticButton variant="primary" size="md">
+              Sign In to Olato
+            </MagneticButton>
           </Link>
-        </div>
+        </main>
         <Footer />
       </div>
     );
   }
 
-  const handleSavePreferences = () => {
+  const handleSavePreferences = (e: React.FormEvent) => {
+    e.preventDefault();
     updateProfile({ studentVerified });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
-  const handleSignOut = () => {
+  const handleLogout = () => {
     signOut();
     router.push('/');
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7FA]">
+    <div className="min-h-screen flex flex-col bg-[#FAF9F6] text-[#15151A]">
       <Navbar />
 
-      <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-8 py-8 w-full">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Header Card */}
-          <div className="bg-white border border-[#E7E7EC] rounded-3xl p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
-            <div className="flex items-center gap-5">
+      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-8 py-8 w-full space-y-8">
+        {/* Profile Card Header */}
+        <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            {user.avatarUrl ? (
               <img
-                src={user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                src={user.avatarUrl}
                 alt={user.name}
                 className="w-20 h-20 rounded-full object-cover border-2 border-[#5B5CE2]"
               />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-[#15151A]">{user.name}</h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#EEF0FF] text-[#5B5CE2] text-xs font-bold uppercase tracking-wider">
-                    {user.role}
-                  </span>
-                </div>
-                <p className="text-sm text-[#6F7078]">{user.email}</p>
-                <p className="text-xs text-[#19B87A] font-semibold mt-1">✓ Verified Olato Discovery Member</p>
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-[#EEF0FF] text-[#5B5CE2] flex items-center justify-center font-bold text-2xl">
+                <User className="w-10 h-10" />
               </div>
-            </div>
+            )}
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push('/saved')}
-                icon={<Heart className="w-4 h-4 text-[#EF4444]" />}
-              >
-                Saved ({savedCount})
-              </Button>
-              <Button variant="danger" size="sm" onClick={handleSignOut} icon={<LogOut className="w-4 h-4" />}>
-                Sign Out
-              </Button>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-black text-[#15151A]">{user.name}</h1>
+                {isAdmin && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#EEF0FF] text-[#5B5CE2] text-[10px] font-extrabold uppercase tracking-wider border border-[#5B5CE2]/30">
+                    Admin
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#6F7078] flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5" />
+                {user.email}
+              </p>
+              <div className="flex items-center gap-2 pt-1 text-xs">
+                <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {studentVerified ? 'Student Verified' : 'Standard Member'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Preferences Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Preferred Location Hub */}
-            <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 space-y-4 shadow-sm">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-[#5B5CE2]" />
-                <h3 className="text-lg font-bold text-[#15151A]">Default Discovery Hub</h3>
-              </div>
-              <p className="text-xs text-[#6F7078]">
-                Set your primary city neighborhood to automatically surface deals near your home or workplace.
-              </p>
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <Link href="/admin">
+                <MagneticButton variant="outline" size="sm" icon={<Shield className="w-4 h-4 text-[#5B5CE2]" />}>
+                  Admin Portal
+                </MagneticButton>
+              </Link>
+            )}
 
-              <div className="space-y-2">
-                {allHubs.map((hub) => (
-                  <button
-                    key={hub.id}
-                    type="button"
-                    onClick={() => setHub(hub)}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${
-                      activeHub.id === hub.id
-                        ? 'bg-[#EEF0FF] border-[#5B5CE2] text-[#5B5CE2]'
-                        : 'bg-white border-[#E7E7EC] hover:bg-[#F7F7FA] text-[#15151A]'
-                    }`}
-                  >
-                    <span>{hub.name} ({hub.area})</span>
-                    {activeHub.id === hub.id && <Check className="w-4 h-4 text-[#5B5CE2]" />}
-                  </button>
-                ))}
-              </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-2xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Link href="/saved" className="p-6 rounded-3xl bg-white border border-[#E7E7EC] shadow-xs hover:border-[#5B5CE2]/40 transition-all flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-[#6F7078] uppercase tracking-wider">Saved Deals</span>
+              <div className="text-3xl font-black text-[#15151A]">{savedCount}</div>
             </div>
+            <div className="p-3 bg-[#EEF0FF] text-[#5B5CE2] rounded-2xl">
+              <Heart className="w-6 h-6" />
+            </div>
+          </Link>
 
-            {/* Student & Eligibility Preferences */}
-            <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 space-y-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-[#5B5CE2]" />
-                <h3 className="text-lg font-bold text-[#15151A]">Member Eligibility</h3>
-              </div>
+          <div className="p-6 rounded-3xl bg-white border border-[#E7E7EC] shadow-xs flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-[#6F7078] uppercase tracking-wider">Preferred Area</span>
+              <div className="text-lg font-black text-[#15151A] truncate max-w-[150px]">{activeHub.name}</div>
+            </div>
+            <div className="p-3 bg-emerald-50 text-[#10B981] rounded-2xl">
+              <MapPin className="w-6 h-6" />
+            </div>
+          </div>
 
-              <div className="p-4 rounded-2xl bg-[#F7F7FA] border border-[#E7E7EC] flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-[#15151A]">Student Deal Focus</h4>
-                  <p className="text-xs text-[#6F7078]">Highlight student discounts across coffee shops</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={studentVerified}
-                  onChange={(e) => setStudentVerified(e.target.checked)}
-                  className="w-5 h-5 accent-[#5B5CE2] rounded cursor-pointer"
-                />
-              </div>
-
-              {user.role === 'ADMIN' && (
-                <div className="p-4 rounded-2xl bg-[#EEF0FF] border border-[#5B5CE2]/20 flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-[#5B5CE2]">Merchant Admin Access</h4>
-                    <p className="text-xs text-[#6F7078]">You have administrative credentials to manage places</p>
-                  </div>
-                  <Button variant="primary" size="sm" onClick={() => router.push('/admin')}>
-                    Go to Portal
-                  </Button>
-                </div>
-              )}
-
-              <Button variant="primary" size="md" onClick={handleSavePreferences} className="w-full">
-                {savedSuccess ? 'Preferences Saved!' : 'Save Profile Changes'}
-              </Button>
+          <div className="p-6 rounded-3xl bg-white border border-[#E7E7EC] shadow-xs flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-[#6F7078] uppercase tracking-wider">Bank Privileges</span>
+              <div className="text-lg font-black text-[#15151A] truncate max-w-[150px]">{preferredBank}</div>
+            </div>
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+              <CreditCard className="w-6 h-6" />
             </div>
           </div>
         </div>
+
+        {/* Preferences Form */}
+        <form onSubmit={handleSavePreferences} className="bg-white border border-[#E7E7EC] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+          <h2 className="text-xl font-bold text-[#15151A] pb-2 border-b border-[#E7E7EC]">
+            Discount Discovery Preferences
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Preferred Neighborhood Hub */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-[#5B5CE2]" />
+                Primary Location Hub
+              </label>
+              <select
+                value={activeHub.id}
+                onChange={(e) => {
+                  const found = allHubs.find((h) => h.id === e.target.value);
+                  if (found) setHub(found);
+                }}
+                className="w-full p-3.5 rounded-2xl bg-[#FAF9F6] border border-[#E7E7EC] text-sm text-[#15151A] font-semibold outline-none focus:border-[#5B5CE2]"
+              >
+                {allHubs.map((hub) => (
+                  <option key={hub.id} value={hub.id}>
+                    {hub.name} ({hub.city})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Preferred Bank Card */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-[#5B5CE2]" />
+                Primary Payment Card
+              </label>
+              <select
+                value={preferredBank}
+                onChange={(e) => setPreferredBank(e.target.value)}
+                className="w-full p-3.5 rounded-2xl bg-[#FAF9F6] border border-[#E7E7EC] text-sm text-[#15151A] font-semibold outline-none focus:border-[#5B5CE2]"
+              >
+                <option value="Standard Chartered">Standard Chartered</option>
+                <option value="Alfalah">Bank Alfalah</option>
+                <option value="HBL">HBL Prestige</option>
+                <option value="Meezan">Meezan Bank</option>
+                <option value="Faysal">Faysal Bank</option>
+                <option value="All Cards">Any Visa / Mastercard</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Toggle Switches */}
+          <div className="space-y-4 pt-4 border-t border-[#E7E7EC]">
+            <div className="flex items-center justify-between p-4 bg-[#FAF9F6] rounded-2xl border border-[#E7E7EC]">
+              <div className="space-y-0.5">
+                <div className="text-sm font-bold text-[#15151A] flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-[#5B5CE2]" />
+                  <span>Student Discount Verification Status</span>
+                </div>
+                <p className="text-xs text-[#6F7078]">
+                  Enables dedicated 20-30% student discounts at participating cafés and bistros.
+                </p>
+              </div>
+
+              <input
+                type="checkbox"
+                checked={studentVerified}
+                onChange={(e) => setStudentVerified(e.target.checked)}
+                className="w-5 h-5 accent-[#5B5CE2] cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-[#FAF9F6] rounded-2xl border border-[#E7E7EC]">
+              <div className="space-y-0.5">
+                <div className="text-sm font-bold text-[#15151A] flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#5B5CE2]" />
+                  <span>Expiring Deal Reminders</span>
+                </div>
+                <p className="text-xs text-[#6F7078]">
+                  Receive notifications when a deal in your saved pocket is expiring in 48 hours.
+                </p>
+              </div>
+
+              <input
+                type="checkbox"
+                checked={notifyDeals}
+                onChange={(e) => setNotifyDeals(e.target.checked)}
+                className="w-5 h-5 accent-[#5B5CE2] cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4">
+            {savedSuccess ? (
+              <span className="text-xs font-bold text-[#10B981] flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                Preferences updated successfully!
+              </span>
+            ) : (
+              <span className="text-xs text-[#6F7078]">Changes are saved to your local profile.</span>
+            )}
+
+            <MagneticButton variant="primary" size="sm" type="submit">
+              Save Preferences
+            </MagneticButton>
+          </div>
+        </form>
       </main>
 
       <Footer />

@@ -1,331 +1,394 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { repository } from '@/lib/repository';
-import { Discount, Place, DiscountStatus } from '@/lib/types';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { Plus, Edit2, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Discount, Place, CategoryType, DiscountStatus } from '@/lib/types';
+import {
+  Tag,
+  Plus,
+  Trash2,
+  Edit2,
+  Search,
+  CheckCircle2,
+  X,
+  CreditCard,
+  GraduationCap,
+  Calendar,
+} from 'lucide-react';
 
 export default function AdminDiscountsPage() {
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingDiscount, setEditingDiscount] = useState<Partial<Discount> | null>(null);
+  const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
 
-  useEffect(() => {
-    refreshData();
-  }, []);
+  // Form State
+  const [placeId, setPlaceId] = useState('');
+  const [offerTitle, setOfferTitle] = useState('');
+  const [discountDetails, setDiscountDetails] = useState('20% OFF');
+  const [description, setDescription] = useState('');
+  const [bankCard, setBankCard] = useState('');
+  const [studentEligible, setStudentEligible] = useState(false);
+  const [startDate, setStartDate] = useState('2026-06-01');
+  const [endDate, setEndDate] = useState('2026-12-31');
+  const [status, setStatus] = useState<DiscountStatus>('Active');
+  const [confidence, setConfidence] = useState(95);
 
-  const refreshData = () => {
+  const reloadData = () => {
     setDiscounts(repository.getDiscounts({}));
-    setPlaces(repository.getPlaces('ALL'));
-  };
-
-  const handleOpenAddModal = () => {
-    const firstPlace = places[0];
-    setEditingDiscount({
-      placeId: firstPlace?.id || '',
-      placeName: firstPlace?.name || '',
-      category: firstPlace?.category || 'CAFE',
-      discountDetails: '25% OFF',
-      offerTitle: '',
-      description: 'Exclusive deal for Olato members.',
-      bankCard: 'All Cards',
-      studentEligible: false,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: '2026-12-31',
-      status: 'Active',
-      confidence: 95,
-      lastVerifiedDate: new Date().toISOString(),
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEditModal = (d: Discount) => {
-    setEditingDiscount({ ...d });
-    setIsModalOpen(true);
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingDiscount?.offerTitle || !editingDiscount?.placeId) return;
-
-    repository.saveDiscount(editingDiscount as any);
-    refreshData();
-    setIsModalOpen(false);
-  };
-
-  const handleQuickVerify = (id: string) => {
-    repository.verifyDiscount(id, 'Active', 99);
-    refreshData();
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this discount offer?')) {
-      repository.deleteDiscount(id);
-      refreshData();
+    const loadedPlaces = repository.getPlaces();
+    setPlaces(loadedPlaces);
+    if (loadedPlaces.length > 0 && !placeId) {
+      setPlaceId(loadedPlaces[0].id);
     }
   };
 
+  useEffect(() => {
+    reloadData();
+  }, []);
+
+  const handleOpenModal = (disc?: Discount) => {
+    if (disc) {
+      setEditingDiscount(disc);
+      setPlaceId(disc.placeId);
+      setOfferTitle(disc.offerTitle);
+      setDiscountDetails(disc.discountDetails);
+      setDescription(disc.description);
+      setBankCard(disc.bankCard || '');
+      setStudentEligible(disc.studentEligible);
+      setStartDate(disc.startDate.slice(0, 10));
+      setEndDate(disc.endDate.slice(0, 10));
+      setStatus(disc.status);
+      setConfidence(disc.confidence);
+    } else {
+      setEditingDiscount(null);
+      setPlaceId(places[0]?.id || '');
+      setOfferTitle('');
+      setDiscountDetails('20% OFF');
+      setDescription('');
+      setBankCard('');
+      setStudentEligible(false);
+      setStartDate(new Date().toISOString().slice(0, 10));
+      setEndDate('2026-12-31');
+      setStatus('Active');
+      setConfidence(95);
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSaveDiscount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!offerTitle.trim() || !placeId) return;
+
+    const selectedPlace = places.find((p) => p.id === placeId);
+
+    repository.saveDiscount({
+      id: editingDiscount?.id,
+      placeId,
+      placeName: selectedPlace?.name || 'Selected Place',
+      category: selectedPlace?.category || 'CAFE',
+      offerTitle,
+      discountDetails,
+      description,
+      bankCard: bankCard.trim() || undefined,
+      studentEligible,
+      startDate: new Date(startDate).toISOString(),
+      endDate: new Date(endDate).toISOString(),
+      status,
+      confidence,
+      lastVerifiedDate: 'Today (Admin Verified)',
+      image: selectedPlace?.images?.[0] || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb',
+      latitude: selectedPlace?.latitude || 31.5204,
+      longitude: selectedPlace?.longitude || 74.3587,
+    });
+
+    reloadData();
+    setIsModalOpen(false);
+  };
+
+  const handleDeleteDiscount = (id: string) => {
+    if (confirm('Are you sure you want to remove this discount?')) {
+      repository.deleteDiscount(id);
+      reloadData();
+    }
+  };
+
+  const filteredDiscounts = discounts.filter((d) => {
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      return (
+        d.placeName.toLowerCase().includes(q) ||
+        d.offerTitle.toLowerCase().includes(q) ||
+        d.discountDetails.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
   return (
-    <div className="space-y-8 max-w-[1200px]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[#15151A]">Discounts Management</h1>
-          <p className="text-sm text-[#6F7078] mt-0.5">
-            Create, edit, verify, and track promotional deals, card partner offers, and student eligibility
-          </p>
+    <div className="min-h-screen flex bg-[#FAF9F6] text-[#15151A]">
+      <AdminSidebar />
+
+      <main className="flex-1 p-8 space-y-6 overflow-y-auto">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E7E7EC] pb-6">
+          <div>
+            <span className="text-xs font-bold text-[#5B5CE2] uppercase tracking-wider block mb-1">
+              Admin Data Management
+            </span>
+            <h1 className="text-3xl font-black text-[#15151A] tracking-tight">Discounts &amp; Offers</h1>
+          </div>
+
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#5B5CE2] hover:bg-[#4B4CCB] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Discount</span>
+          </button>
         </div>
 
-        <Button variant="primary" size="md" onClick={handleOpenAddModal} icon={<Plus className="w-4 h-4" />}>
-          Create New Discount
-        </Button>
-      </div>
+        {/* Search */}
+        <div className="flex items-center px-3 py-2 bg-white border border-[#E7E7EC] rounded-2xl max-w-md shadow-xs">
+          <Search className="w-4 h-4 text-[#6F7078] mr-2" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search deals, cards or places..."
+            className="text-xs bg-transparent outline-none w-full text-[#15151A]"
+          />
+        </div>
 
-      {/* TABLE */}
-      <div className="bg-white border border-[#E7E7EC] rounded-3xl p-6 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-[#E7E7EC] text-xs font-bold text-[#6F7078] uppercase tracking-wider">
-                <th className="py-3 px-4">Place</th>
-                <th className="py-3 px-4">Discount Badge</th>
-                <th className="py-3 px-4">Offer Title</th>
-                <th className="py-3 px-4">Bank / Card</th>
-                <th className="py-3 px-4">Student</th>
-                <th className="py-3 px-4">Verification</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E7E7EC]/60">
-              {discounts.map((d) => (
-                <tr key={d.id} className="hover:bg-[#F7F7FA]">
-                  <td className="py-4 px-4 font-bold text-[#15151A]">{d.placeName}</td>
-                  <td className="py-4 px-4 font-extrabold text-[#19B87A]">{d.discountDetails}</td>
-                  <td className="py-4 px-4 text-xs text-[#15151A] font-semibold max-w-[200px] truncate">
-                    {d.offerTitle}
-                  </td>
-                  <td className="py-4 px-4 text-xs text-[#6F7078]">{d.bankCard || 'All Cards'}</td>
-                  <td className="py-4 px-4">
-                    {d.studentEligible ? (
-                      <span className="px-2 py-0.5 rounded-full bg-[#EEF0FF] text-[#5B5CE2] text-xs font-bold">
-                        Eligible
-                      </span>
-                    ) : (
-                      <span className="text-xs text-[#6F7078]">-</span>
-                    )}
-                  </td>
-                  <td className="py-4 px-4">
-                    <VerificationBadge lastVerifiedDate={d.lastVerifiedDate} confidence={d.confidence} showDetail={false} />
-                  </td>
-                  <td className="py-4 px-4">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        d.status === 'Active'
-                          ? 'bg-[#E8FAF2] text-[#19B87A]'
-                          : d.status === 'Pending Verification'
-                          ? 'bg-[#FEF3C7] text-[#F59E0B]'
-                          : 'bg-[#FFF5F5] text-[#EF4444]'
-                      }`}
-                    >
-                      {d.status}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4 text-right space-x-1">
-                    <button
-                      onClick={() => handleQuickVerify(d.id)}
-                      className="p-1.5 text-[#19B87A] hover:bg-[#E8FAF2] rounded-lg transition-colors"
-                      title="Verify Now"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenEditModal(d)}
-                      className="p-1.5 text-[#5B5CE2] hover:bg-[#EEF0FF] rounded-lg transition-colors"
-                      title="Edit Offer"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(d.id)}
-                      className="p-1.5 text-[#EF4444] hover:bg-[#FFF5F5] rounded-lg transition-colors"
-                      title="Delete Offer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
+        {/* Table */}
+        <div className="bg-white border border-[#E7E7EC] rounded-3xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#FAF9F6] border-b border-[#E7E7EC] text-[#6F7078] font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="p-4">Place &amp; Title</th>
+                  <th className="p-4">Discount</th>
+                  <th className="p-4">Card / Student</th>
+                  <th className="p-4">Valid Window</th>
+                  <th className="p-4">Confidence</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#E7E7EC]">
+                {filteredDiscounts.map((d) => (
+                  <tr key={d.id} className="hover:bg-[#FAF9F6]/60 transition-colors">
+                    <td className="p-4">
+                      <div className="text-xs font-bold text-[#5B5CE2] uppercase tracking-wider">{d.placeName}</div>
+                      <div className="text-sm font-bold text-[#15151A]">{d.offerTitle}</div>
+                    </td>
+                    <td className="p-4">
+                      <span className="px-2.5 py-1 rounded-xl bg-[#EEF0FF] text-[#5B5CE2] font-black">
+                        {d.discountDetails}
+                      </span>
+                    </td>
+                    <td className="p-4 text-[#6F7078]">
+                      {d.bankCard ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-[#15151A]">
+                          <CreditCard className="w-3 h-3 text-[#5B5CE2]" /> {d.bankCard}
+                        </span>
+                      ) : d.studentEligible ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                          <GraduationCap className="w-3.5 h-3.5 text-emerald-600" /> Student
+                        </span>
+                      ) : (
+                        <span>Open to all</span>
+                      )}
+                    </td>
+                    <td className="p-4 text-[#6F7078]">
+                      {d.endDate.slice(0, 10)}
+                    </td>
+                    <td className="p-4">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">
+                        {d.confidence}%
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-0.5 rounded-md font-bold ${d.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenModal(d)}
+                          className="p-1.5 rounded-lg border border-[#E7E7EC] hover:bg-[#FAF9F6] text-[#15151A] cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDiscount(d.id)}
+                          className="p-1.5 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      {/* FORM MODAL */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={editingDiscount?.id ? 'Edit Discount Offer' : 'Create New Discount Offer'}
-        maxWidth="lg"
-      >
-        {editingDiscount && (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Assign Merchant Place</label>
-                <select
-                  value={editingDiscount.placeId || ''}
-                  onChange={(e) => {
-                    const selected = places.find((p) => p.id === e.target.value);
-                    setEditingDiscount({
-                      ...editingDiscount,
-                      placeId: e.target.value,
-                      placeName: selected?.name || '',
-                      category: selected?.category || 'CAFE',
-                    });
-                  }}
-                  required
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
+        {/* Modal */}
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div
+              className="relative w-full max-w-lg bg-white border border-[#E7E7EC] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#E7E7EC]">
+                <h3 className="text-xl font-bold text-[#15151A]">
+                  {editingDiscount ? 'Edit Discount Offer' : 'Add New Discount'}
+                </h3>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-[#FAF9F6] text-[#6F7078] cursor-pointer"
                 >
-                  {places.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.category})
-                    </option>
-                  ))}
-                </select>
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Discount Badge Details</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 25% OFF, BOGO, 30% OFF"
-                  value={editingDiscount.discountDetails || ''}
-                  onChange={(e) => setEditingDiscount({ ...editingDiscount, discountDetails: e.target.value })}
-                  required
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                />
-              </div>
+              <form onSubmit={handleSaveDiscount} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Assign to Place</label>
+                  <select
+                    value={placeId}
+                    onChange={(e) => setPlaceId(e.target.value)}
+                    className="w-full p-3 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                    required
+                  >
+                    {places.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.category}) - {p.area}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Offer Title</label>
+                  <input
+                    type="text"
+                    value={offerTitle}
+                    onChange={(e) => setOfferTitle(e.target.value)}
+                    placeholder="e.g. 25% Off on All Espresso Drinks"
+                    className="w-full p-3 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Discount Details</label>
+                    <input
+                      type="text"
+                      value={discountDetails}
+                      onChange={(e) => setDiscountDetails(e.target.value)}
+                      placeholder="e.g. 20% OFF or BOGO"
+                      className="w-full p-3 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Bank / Card</label>
+                    <input
+                      type="text"
+                      value={bankCard}
+                      onChange={(e) => setBankCard(e.target.value)}
+                      placeholder="e.g. Standard Chartered Visa (or blank)"
+                      className="w-full p-3 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Offer Description</label>
+                  <textarea
+                    rows={2}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describe how the discount applies..."
+                    className="w-full p-3 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs text-[#15151A] outline-none resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">Start Date</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#15151A] uppercase tracking-wider">End Date</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-semibold text-[#15151A] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-[#15151A] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={studentEligible}
+                      onChange={(e) => setStudentEligible(e.target.checked)}
+                      className="w-4 h-4 accent-[#5B5CE2]"
+                    />
+                    <span>Student Eligible</span>
+                  </label>
+
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as any)}
+                    className="p-2 rounded-xl bg-[#FAF9F6] border border-[#E7E7EC] text-xs font-bold"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Pending Verification">Pending</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-[#E7E7EC]">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-[#E7E7EC] text-xs font-bold text-[#6F7078] hover:bg-[#FAF9F6] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#5B5CE2] hover:bg-[#4B4CCB] text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    {editingDiscount ? 'Save Changes' : 'Create Discount'}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Offer Title</label>
-              <input
-                type="text"
-                placeholder="e.g. 25% off selected coffee & handcrafted desserts"
-                value={editingDiscount.offerTitle || ''}
-                onChange={(e) => setEditingDiscount({ ...editingDiscount, offerTitle: e.target.value })}
-                required
-                className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Description</label>
-              <textarea
-                rows={2}
-                value={editingDiscount.description || ''}
-                onChange={(e) => setEditingDiscount({ ...editingDiscount, description: e.target.value })}
-                className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Bank / Card Specific</label>
-                <input
-                  type="text"
-                  placeholder="e.g. ABC Bank Visa or All Cards"
-                  value={editingDiscount.bankCard || ''}
-                  onChange={(e) => setEditingDiscount({ ...editingDiscount, bankCard: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Confidence Score (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={editingDiscount.confidence ?? 95}
-                  onChange={(e) =>
-                    setEditingDiscount({ ...editingDiscount, confidence: parseInt(e.target.value, 10) })
-                  }
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Start Date</label>
-                <input
-                  type="date"
-                  value={editingDiscount.startDate || ''}
-                  onChange={(e) => setEditingDiscount({ ...editingDiscount, startDate: e.target.value })}
-                  required
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">End Date</label>
-                <input
-                  type="date"
-                  value={editingDiscount.endDate || ''}
-                  onChange={(e) => setEditingDiscount({ ...editingDiscount, endDate: e.target.value })}
-                  required
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#15151A]">Status</label>
-                <select
-                  value={editingDiscount.status || 'Active'}
-                  onChange={(e) =>
-                    setEditingDiscount({ ...editingDiscount, status: e.target.value as DiscountStatus })
-                  }
-                  className="w-full p-2.5 rounded-xl border border-[#E7E7EC] text-sm outline-none focus:border-[#5B5CE2]"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Pending Verification">Pending Verification</option>
-                  <option value="Expired">Expired</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2 pt-6">
-                <input
-                  type="checkbox"
-                  id="studentEligible"
-                  checked={editingDiscount.studentEligible || false}
-                  onChange={(e) => setEditingDiscount({ ...editingDiscount, studentEligible: e.target.checked })}
-                  className="w-4 h-4 accent-[#5B5CE2]"
-                />
-                <label htmlFor="studentEligible" className="text-xs font-bold text-[#15151A]">
-                  Student Discount Eligible
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E7E7EC]">
-              <Button variant="outline" size="sm" type="button" onClick={() => setIsModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" type="submit">
-                Save Discount Offer
-              </Button>
-            </div>
-          </form>
+          </div>
         )}
-      </Modal>
+      </main>
     </div>
   );
 }

@@ -1,20 +1,23 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
 
 :root {
-  --primary: #5B5CE2;
-  --primary-hover: #4A4BC7;
-  --primary-light: #EEF0FF;
-  --secondary: #19B87A;
-  --secondary-light: #E8FAF2;
-  --bg-main: #F7F7FA;
-  --surface: #FFFFFF;
+  --bg-main: #FAF9F6;
+  --bg-surface: #FFFFFF;
+  --surface-hover: #F4F3F0;
+  --surface-card: #FFFFFF;
+  --border-color: #E7E7EC;
+  --border-highlight: #5B5CE2;
   --text-primary: #15151A;
   --text-secondary: #6F7078;
-  --border-color: #E7E7EC;
-  --success: #19B87A;
-  --warning: #F59E0B;
-  --error: #EF4444;
+  --text-muted: #9A9BA4;
+  --primary-indigo: #5B5CE2;
+  --primary-indigo-hover: #4B4CCB;
+  --primary-glow: rgba(91, 92, 226, 0.18);
+  --accent-emerald: #10B981;
+  --accent-emerald-glow: rgba(16, 185, 129, 0.18);
+  --surface-dark: #12131A;
+  --surface-dark-card: #181924;
+  --border-dark: #262738;
 }
 
 body {
@@ -23,58 +26,64 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
-/* Custom Leaflet Map styling to match Olato UI */
-.leaflet-container {
-  font-family: inherit !important;
-  border-radius: 16px;
-  z-index: 10;
+/* Background Subtle Noise & Grid Overlay */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
 }
 
-.leaflet-popup-content-wrapper {
-  padding: 0 !important;
-  border-radius: 16px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
-  overflow: hidden;
+.bg-grid-pattern-dark {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
 }
 
-.leaflet-popup-content {
-  margin: 0 !important;
-  line-height: inherit !important;
+/* Custom Glow Effects */
+.glow-field {
+  box-shadow: 0 0 50px -10px var(--primary-glow);
 }
 
-.leaflet-popup-tip-container {
-  display: none !important;
+.glow-emerald {
+  box-shadow: 0 0 50px -10px var(--accent-emerald-glow);
 }
 
-/* Smooth transitions */
+/* Smooth Transitions */
 .transition-lift {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
 }
 
 .transition-lift:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 24px -6px rgba(91, 92, 226, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
+  transform: translateY(-4px);
+  border-color: #D3D4DE;
+  box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08);
 }
 
-/* Micro interaction pulse for live location */
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(25, 184, 122, 0.7);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 10px rgba(25, 184, 122, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(25, 184, 122, 0);
-  }
+/* Text Shimmer Effect */
+@keyframes text-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.pulse-location {
-  animation: pulse-ring 2s infinite;
+.animate-shimmer {
+  background: linear-gradient(90deg, #15151A 0%, #5B5CE2 50%, #10B981 75%, #15151A 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: text-shimmer 6s linear infinite;
 }
 
+/* Hide scrollbars for clean horizontal slider */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

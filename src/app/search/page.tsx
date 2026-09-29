@@ -1,196 +1,220 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
-import { SearchBar } from '@/components/ui/SearchBar';
-import { CategorySelector } from '@/components/ui/CategorySelector';
+import { AIPromptInterface } from '@/components/ai/AIPromptInterface';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { DiscountCard } from '@/components/ui/DiscountCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { InteractiveMap } from '@/components/map/InteractiveMap';
-import { AIDiscoveryModal } from '@/components/ai/AIDiscoveryModal';
 import { repository } from '@/lib/repository';
+import { Discount, SearchFilterParams, CategoryType } from '@/lib/types';
 import { useLocation } from '@/context/LocationContext';
-import { CategoryType, Discount, SearchFilterParams } from '@/lib/types';
-import { LayoutGrid, Map, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Coffee, UtensilsCrossed, Star, Sparkles, SlidersHorizontal, Search, RefreshCw, MapPin } from 'lucide-react';
 
-function SearchContent() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { userCoords, activeHub } = useLocation();
 
-  // Extract query params
-  const initialQuery = searchParams.get('q') || '';
-  const initialCat = (searchParams.get('cat') as CategoryType) || 'ALL';
-  const initialMinDisc = searchParams.get('minDisc') ? Number(searchParams.get('minDisc')) : 0;
-  const initialValidToday = searchParams.get('validToday') === 'true';
-  const initialVerifiedOnly = searchParams.get('verifiedOnly') === 'true';
-  const initialStudentOnly = searchParams.get('studentOnly') === 'true';
+  // URL Query Parameters
+  const queryParam = searchParams.get('q') || '';
+  const categoryParam = (searchParams.get('cat') as CategoryType | 'ALL') || 'ALL';
+  const minDiscParam = searchParams.get('minDisc') ? Number(searchParams.get('minDisc')) : undefined;
+  const validTodayParam = searchParams.get('validToday') === 'true';
+  const verifiedOnlyParam = searchParams.get('verifiedOnly') === 'true';
+  const studentOnlyParam = searchParams.get('studentOnly') === 'true';
+  const bankCardParam = searchParams.get('card') || undefined;
 
+  const [searchQuery, setSearchQuery] = useState(queryParam);
+  const [activeCategory, setActiveCategory] = useState<CategoryType | 'ALL'>(categoryParam);
   const [filters, setFilters] = useState<SearchFilterParams>({
-    query: initialQuery,
-    category: initialCat,
-    minDiscount: initialMinDisc,
-    validToday: initialValidToday,
-    verifiedOnly: initialVerifiedOnly,
-    studentOnly: initialStudentOnly,
-    maxDistance: 10,
+    query: queryParam,
+    category: categoryParam,
+    minDiscount: minDiscParam,
+    validToday: validTodayParam,
+    verifiedOnly: verifiedOnlyParam,
+    studentOnly: studentOnlyParam,
+    bankCard: bankCardParam,
+    maxDistance: 15,
     sortBy: 'relevant',
   });
 
   const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [viewMode, setViewMode] = useState<'grid' | 'split'>('split');
-  const [selectedDiscountId, setSelectedDiscountId] = useState<string | undefined>(undefined);
-  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
+  // Sync state when URL params change
   useEffect(() => {
-    const list = repository.getDiscounts(filters, userCoords.latitude, userCoords.longitude);
-    setDiscounts(list);
-  }, [filters, userCoords]);
+    setSearchQuery(queryParam);
+    setActiveCategory(categoryParam);
+    setFilters((prev) => ({
+      ...prev,
+      query: queryParam,
+      category: categoryParam,
+      minDiscount: minDiscParam,
+      validToday: validTodayParam,
+      verifiedOnly: verifiedOnlyParam,
+      studentOnly: studentOnlyParam,
+      bankCard: bankCardParam,
+    }));
+  }, [queryParam, categoryParam, minDiscParam, validTodayParam, verifiedOnlyParam, studentOnlyParam, bankCardParam]);
+
+  // Execute query against repository
+  useEffect(() => {
+    setIsSearching(true);
+    const combinedParams: SearchFilterParams = {
+      ...filters,
+      query: searchQuery.trim() || undefined,
+      category: activeCategory,
+    };
+
+    const results = repository.getDiscounts(
+      combinedParams,
+      userCoords.latitude,
+      userCoords.longitude
+    );
+
+    setDiscounts(results);
+    setIsSearching(false);
+  }, [filters, searchQuery, activeCategory, userCoords]);
 
   const handleUpdateFilters = (updated: Partial<SearchFilterParams>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
   };
 
   const handleResetFilters = () => {
+    setSearchQuery('');
+    setActiveCategory('ALL');
     setFilters({
       query: '',
       category: 'ALL',
-      maxDistance: 25,
+      maxDistance: 15,
       minDiscount: 0,
       validToday: false,
       verifiedOnly: false,
       studentOnly: false,
+      bankCard: undefined,
       sortBy: 'relevant',
     });
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7FA]">
-      <Navbar onOpenAIModal={() => setIsAIModalOpen(true)} />
+    <div className="min-h-screen flex flex-col bg-[#FAF9F6] text-[#15151A]">
+      <Navbar />
 
-      <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-8 py-8 w-full">
-        {/* TOP SEARCH HEADER */}
-        <section className="mb-6 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-[#15151A]">Deals Near You</h1>
-              <p className="text-sm text-[#6F7078] mt-0.5">
-                Showing {discounts.length} verified offers around {activeHub.name}
-              </p>
+      <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-8 py-8 w-full space-y-8">
+        {/* Header with Title & Location */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E7E7EC] pb-6">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold text-[#5B5CE2] uppercase tracking-wider">
+                Discovery Engine
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+              <span className="text-xs font-semibold text-[#6F7078] flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-[#5B5CE2]" />
+                Near {activeHub.name}
+              </span>
             </div>
-
-            {/* View Mode Switcher */}
-            <div className="flex items-center gap-1.5 bg-white border border-[#E7E7EC] p-1 rounded-xl shrink-0">
-              <button
-                type="button"
-                onClick={() => setViewMode('split')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'split' ? 'bg-[#5B5CE2] text-white shadow-sm' : 'text-[#6F7078] hover:text-[#15151A]'
-                }`}
-              >
-                <Map className="w-3.5 h-3.5" />
-                <span>Split View</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'grid' ? 'bg-[#5B5CE2] text-white shadow-sm' : 'text-[#6F7078] hover:text-[#15151A]'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Grid Only</span>
-              </button>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-black text-[#15151A] tracking-tight">
+              Explore Verified Discounts
+            </h1>
           </div>
 
-          {/* Search bar & Categories */}
-          <div className="space-y-3">
-            <SearchBar
-              initialValue={filters.query || ''}
-              onSearch={(q) => handleUpdateFilters({ query: q })}
-              onOpenAI={() => setIsAIModalOpen(true)}
-              placeholder="Search coffee, pizza, 25% off, or place name..."
-            />
-
-            <CategorySelector
-              selectedCategory={filters.category || 'ALL'}
-              onSelectCategory={(cat) => handleUpdateFilters({ category: cat })}
-            />
-
-            <FilterBar
-              filters={filters}
-              onChangeFilters={handleUpdateFilters}
-              onReset={handleResetFilters}
-            />
+          <div className="w-full md:max-w-md">
+            <AIPromptInterface theme="light" />
           </div>
-        </section>
+        </div>
 
-        {/* RESULTS AREA */}
-        {discounts.length > 0 ? (
-          viewMode === 'split' ? (
-            /* Split View: Left List, Right Map */
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Left Column: List */}
-              <div className="lg:col-span-7 space-y-4">
-                {discounts.map((discount) => (
-                  <div
-                    key={discount.id}
-                    onClick={() => setSelectedDiscountId(discount.id)}
-                    className={selectedDiscountId === discount.id ? 'ring-2 ring-[#5B5CE2] rounded-2xl' : ''}
-                  >
-                    <DiscountCard discount={discount} horizontal />
-                  </div>
-                ))}
-              </div>
+        {/* Category Pill Filters (STRICTLY CAFE, RESTAURANT, SELECTED PLACES) */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+          {[
+            { id: 'ALL', label: 'All Categories' },
+            { id: 'CAFE', label: 'Cafés', icon: <Coffee className="w-4 h-4" /> },
+            { id: 'RESTAURANT', label: 'Restaurants', icon: <UtensilsCrossed className="w-4 h-4" /> },
+            { id: 'FEATURED_PLACE', label: 'Selected Places', icon: <Star className="w-4 h-4" /> },
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id as any)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeCategory === cat.id
+                  ? 'bg-[#5B5CE2] text-white'
+                  : 'bg-white border border-[#E7E7EC] text-[#6F7078] hover:text-[#15151A] hover:bg-[#F4F3F0]'
+              }`}
+            >
+              {cat.icon}
+              <span>{cat.label}</span>
+            </button>
+          ))}
+        </div>
 
-              {/* Right Column: Interactive Map */}
-              <div className="lg:col-span-5 sticky top-28 h-[650px]">
-                <InteractiveMap
-                  discounts={discounts}
-                  selectedDiscountId={selectedDiscountId}
-                  onSelectDiscount={(id) => setSelectedDiscountId(id)}
-                  centerLat={userCoords.latitude}
-                  centerLng={userCoords.longitude}
-                  className="h-full w-full"
-                />
-              </div>
+        {/* Filter Controls Bar */}
+        <div className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-xs">
+          <FilterBar
+            filters={{ ...filters, category: activeCategory, query: searchQuery }}
+            onChangeFilters={handleUpdateFilters}
+            onReset={handleResetFilters}
+          />
+        </div>
+
+        {/* Active Query Pill */}
+        {(searchQuery || filters.studentOnly || filters.verifiedOnly || filters.bankCard) && (
+          <div className="flex items-center justify-between p-3 bg-[#EEF0FF] rounded-2xl border border-[#5B5CE2]/20 text-xs">
+            <div className="flex items-center gap-2 text-[#5B5CE2] font-semibold">
+              <Sparkles className="w-4 h-4" />
+              <span>
+                Showing results for: <strong>"{searchQuery || 'Active Filters'}"</strong>
+              </span>
             </div>
-          ) : (
-            /* Full Grid View */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {discounts.map((discount) => (
-                <DiscountCard key={discount.id} discount={discount} />
-              ))}
-            </div>
-          )
+            <button
+              onClick={handleResetFilters}
+              className="text-[#5B5CE2] hover:underline font-bold cursor-pointer"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
+
+        {/* Results Header */}
+        <div className="flex items-center justify-between text-xs font-bold text-[#6F7078] uppercase tracking-wider pt-2">
+          <span>{discounts.length} {discounts.length === 1 ? 'Discount Found' : 'Discounts Found'}</span>
+          <span>Verified Local Places</span>
+        </div>
+
+        {/* Discounts Grid */}
+        {discounts.length === 0 ? (
+          <EmptyState
+            type="search"
+            title="No matching discounts found"
+            description="Try widening your distance radius, removing student or card restrictions, or searching for another neighborhood."
+            actionText="Reset all filters"
+            onAction={handleResetFilters}
+          />
         ) : (
-          <div className="py-12">
-            <EmptyState
-              type="search"
-              title="No matching deals found"
-              description="No discounts matched your active search query or filter selection around this area."
-              onAction={handleResetFilters}
-              actionText="Clear All Filters"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {discounts.map((discount) => (
+              <DiscountCard key={discount.id} discount={discount} />
+            ))}
           </div>
         )}
       </main>
 
       <Footer />
-
-      <AIDiscoveryModal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} />
     </div>
   );
 }
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-[#6F7078]">Loading search results...</div>}>
-      <SearchContent />
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center text-sm font-semibold text-[#6F7078]">
+          Loading discounts...
+        </div>
+      }
+    >
+      <SearchPageContent />
     </Suspense>
   );
 }
