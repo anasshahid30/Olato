@@ -43,10 +43,16 @@ export default function OlatoHomePage() {
 
   // Load live discounts relative to user/hub coordinates
   useEffect(() => {
-    const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
-    setDiscounts(all);
-    // Featured deals with high confidence
-    setFeaturedDiscounts(all.filter((d) => d.confidence >= 90).slice(0, 3));
+    const loadDiscounts = () => {
+      const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
+      setDiscounts(all);
+      // Featured deals with high confidence
+      setFeaturedDiscounts(all.filter((d) => d.confidence >= 90).slice(0, 3));
+    };
+
+    loadDiscounts();
+    const unsubscribe = repository.subscribe(loadDiscounts);
+    return () => unsubscribe();
   }, [userCoords]);
 
   const nearbyDiscounts = discounts.filter((d) => {

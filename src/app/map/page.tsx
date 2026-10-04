@@ -33,11 +33,17 @@ export default function MapPage() {
   const [isRequestingGPS, setIsRequestingGPS] = useState(false);
 
   useEffect(() => {
-    const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
-    setDiscounts(all);
-    if (all.length > 0 && !selectedDiscountId) {
-      setSelectedDiscountId(all[0].id);
-    }
+    const loadDiscounts = () => {
+      const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
+      setDiscounts(all);
+      if (all.length > 0 && !selectedDiscountId) {
+        setSelectedDiscountId(all[0].id);
+      }
+    };
+
+    loadDiscounts();
+    const unsubscribe = repository.subscribe(loadDiscounts);
+    return () => unsubscribe();
   }, [userCoords, selectedDiscountId]);
 
   const filteredDiscounts = discounts.filter((d) => {
