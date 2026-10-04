@@ -1,17 +1,112 @@
-import { Place, Discount, SearchFilterParams, OperationalMetrics } from './types';
+import { Place, Discount, SearchFilterParams, OperationalMetrics, CategoryType } from './types';
 import { INITIAL_PLACES, INITIAL_DISCOUNTS } from './seed-data';
 import { calculateDistance, isOfferValid } from './distance';
+import { supabase } from '@/lib/supabase/client';
 
-const PLACES_STORAGE_KEY = 'olato_places_v1';
-const DISCOUNTS_STORAGE_KEY = 'olato_discounts_v1';
+const PLACES_STORAGE_KEY = 'olato_places_v2';
+const DISCOUNTS_STORAGE_KEY = 'olato_discounts_v2';
+
+// Unsplash curated photography for Lahore dining categories
+const CAFE_IMAGES = [
+  'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=1000&q=80',
+];
+
+const RESTAURANT_IMAGES = [
+  'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=1000&q=80',
+];
+
+const DESI_IMAGES = [
+  'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1606471191009-63994c53433b?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1589302168068-964664d93dc0?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=1000&q=80',
+  'https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=1000&q=80',
+];
+
+/**
+ * Parses PostGIS EWKB geometry hex point to { latitude, longitude }
+ */
+export function parsePostgisPoint(hex: unknown): { latitude: number; longitude: number } {
+  if (!hex || typeof hex !== 'string') return { latitude: 31.5204, longitude: 74.3587 };
+  try {
+    const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+    const view = new DataView(bytes.buffer);
+    // Standard PostGIS 2D Point with SRID: bytes 9..17 = lng, 17..25 = lat (little endian)
+    const lng = view.getFloat64(9, true);
+    const lat = view.getFloat64(17, true);
+    if (isNaN(lat) || isNaN(lng)) return { latitude: 31.5204, longitude: 74.3587 };
+    return { latitude: lat, longitude: lng };
+  } catch {
+    return { latitude: 31.5204, longitude: 74.3587 };
+  }
+}
+
+function getImageForPlace(id: number | string, category: CategoryType, slug?: string): string[] {
+  const num = typeof id === 'number' ? id : parseInt(String(id).replace(/\D/g, '')) || 1;
+  if (category === 'CAFE') {
+    return [CAFE_IMAGES[num % CAFE_IMAGES.length]];
+  }
+  if (
+    slug?.includes('karahi') ||
+    slug?.includes('nihari') ||
+    slug?.includes('biryani') ||
+    slug?.includes('desi') ||
+    slug?.includes('shinwari') ||
+    slug?.includes('haveli') ||
+    slug?.includes('bundu') ||
+    slug?.includes('tonight')
+  ) {
+    return [DESI_IMAGES[num % DESI_IMAGES.length]];
+  }
+  return [RESTAURANT_IMAGES[num % RESTAURANT_IMAGES.length]];
+}
+
+function mapCategory(slug?: string, placeId?: number): CategoryType {
+  if (slug === 'cafe') return 'CAFE';
+  if (slug === 'continental-international') return 'RESTAURANT';
+  if (slug === 'desi-pakistani') {
+    if (placeId && [61, 62, 63, 64].includes(placeId)) return 'FEATURED_PLACE';
+    return 'RESTAURANT';
+  }
+  if (placeId && placeId >= 41 && placeId <= 60) return 'CAFE';
+  return 'RESTAURANT';
+}
 
 class RepositoryService {
   private places: Place[] = [];
   private discounts: Discount[] = [];
   private initialized: boolean = false;
+  private listeners: Set<() => void> = new Set();
+  public isSyncing: boolean = false;
+  public lastSyncedAt: Date | null = null;
 
   constructor() {
     this.init();
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify() {
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (err) {
+        console.error('Error notifying repository subscriber:', err);
+      }
+    });
   }
 
   private init() {
@@ -26,18 +121,12 @@ class RepositoryService {
       const storedPlaces = localStorage.getItem(PLACES_STORAGE_KEY);
       const storedDiscounts = localStorage.getItem(DISCOUNTS_STORAGE_KEY);
 
-      if (storedPlaces) {
+      if (storedPlaces && storedDiscounts) {
         this.places = JSON.parse(storedPlaces);
-      } else {
-        this.places = [...INITIAL_PLACES];
-        localStorage.setItem(PLACES_STORAGE_KEY, JSON.stringify(this.places));
-      }
-
-      if (storedDiscounts) {
         this.discounts = JSON.parse(storedDiscounts);
       } else {
+        this.places = [...INITIAL_PLACES];
         this.discounts = [...INITIAL_DISCOUNTS];
-        localStorage.setItem(DISCOUNTS_STORAGE_KEY, JSON.stringify(this.discounts));
       }
     } catch (e) {
       console.warn('LocalStorage error, using memory seed:', e);
@@ -46,6 +135,9 @@ class RepositoryService {
     }
 
     this.initialized = true;
+
+    // Automatically trigger live fetch from Supabase on client boot
+    this.syncFromSupabase();
   }
 
   private persist() {
@@ -56,6 +148,116 @@ class RepositoryService {
       } catch (e) {
         console.error('Failed to save to localStorage:', e);
       }
+    }
+  }
+
+  /**
+   * Fetches fresh live data from Supabase PostgreSQL tables
+   */
+  public async syncFromSupabase(): Promise<boolean> {
+    if (this.isSyncing) return false;
+    this.isSyncing = true;
+
+    try {
+      // 1. Fetch places with joined categories
+      const { data: rawPlaces, error: placesError } = await supabase
+        .from('places')
+        .select('*, place_categories(category_id, categories(slug, name))')
+        .order('id', { ascending: true });
+
+      if (placesError) {
+        console.warn('⚠️ Supabase places fetch failed, using cached data:', placesError.message);
+        this.isSyncing = false;
+        return false;
+      }
+
+      // 2. Fetch discounts with joined place & provider
+      const { data: rawDiscounts, error: discountsError } = await supabase
+        .from('discounts')
+        .select('*, places(id, name, slug, location, place_categories(categories(slug))), discount_providers(name, slug)')
+        .order('id', { ascending: true });
+
+      if (discountsError) {
+        console.warn('⚠️ Supabase discounts fetch failed, using cached data:', discountsError.message);
+        this.isSyncing = false;
+        return false;
+      }
+
+      if (rawPlaces && rawPlaces.length > 0) {
+        this.places = rawPlaces.map((p) => {
+          const categorySlug = p.place_categories?.[0]?.categories?.slug;
+          const category = mapCategory(categorySlug, p.id);
+          const coords = parsePostgisPoint(p.location);
+          const images = getImageForPlace(p.id, category, p.slug);
+
+          return {
+            id: `place-${p.id}`,
+            name: p.name,
+            slug: p.slug,
+            category,
+            description: p.description || p.why_this_spot_is_good || '',
+            address: p.address,
+            city: p.city || 'Lahore',
+            area: p.area || 'Gulberg',
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            phone: p.phone || '',
+            openingHours: p.opening_hours || '12:00 PM - 12:00 AM',
+            images,
+            status: p.status === 'active' ? 'Active' : 'Inactive',
+            isFeatured: [1, 2, 7, 10, 41, 50, 61, 62].includes(p.id),
+            rating: 4.5 + ((p.id % 5) * 0.1),
+            reviewCount: 50 + ((p.id * 13) % 450),
+            createdAt: p.created_at || new Date().toISOString(),
+            updatedAt: p.updated_at || new Date().toISOString(),
+          };
+        });
+      }
+
+      if (rawDiscounts && rawDiscounts.length > 0) {
+        this.discounts = rawDiscounts.map((d) => {
+          const placeCoords = parsePostgisPoint(d.places?.location);
+          const categorySlug = d.places?.place_categories?.[0]?.categories?.slug;
+          const category = mapCategory(categorySlug, d.place_id);
+          const images = getImageForPlace(d.place_id, category, d.places?.slug);
+
+          return {
+            id: `disc-${d.id}`,
+            placeId: `place-${d.place_id}`,
+            placeName: d.places?.name || 'Local Favorite',
+            category,
+            bankCard: d.bank_card || d.discount_providers?.name || 'All Cards',
+            studentEligible: Boolean(d.is_student_eligible),
+            discountDetails: d.discount_type === 'percentage' ? `${d.discount_value}% OFF` : 'SPECIAL OFFER',
+            offerTitle: d.title,
+            description: d.details || `${d.discount_value}% discount on menu items.`,
+            terms: Array.isArray(d.terms) ? d.terms : ['Show offer badge before payment.'],
+            redemptionInstructions: Array.isArray(d.redemption_instructions)
+              ? d.redemption_instructions
+              : ['Present card or voucher at billing.'],
+            startDate: d.start_date || '2026-09-01',
+            endDate: d.end_date || '2027-12-31',
+            status: d.is_active ? 'Active' : 'Inactive',
+            lastVerifiedDate: d.last_verified_at || d.created_at || new Date().toISOString(),
+            confidence: 95 + ((d.id % 5)),
+            image: images[0],
+            latitude: placeCoords.latitude,
+            longitude: placeCoords.longitude,
+            createdAt: d.created_at || new Date().toISOString(),
+            updatedAt: d.updated_at || new Date().toISOString(),
+          };
+        });
+      }
+
+      this.lastSyncedAt = new Date();
+      this.persist();
+      this.notify();
+      this.isSyncing = false;
+      return true;
+    } catch (err) {
+      console.error('Error during Supabase sync:', err);
+      this.isSyncing = false;
+      return false;
     }
   }
 
@@ -72,7 +274,7 @@ class RepositoryService {
   }
 
   public getPlaceById(id: string): Place | undefined {
-    return this.places.find((p) => p.id === id);
+    return this.places.find((p) => p.id === id || p.id === `place-${id}`);
   }
 
   public savePlace(placeData: Partial<Place> & { name: string; category: Place['category'] }): Place {
@@ -87,6 +289,7 @@ class RepositoryService {
       };
       this.places[existingIndex] = updated;
       this.persist();
+      this.notify();
       return updated;
     } else {
       const newPlace: Place = {
@@ -102,7 +305,9 @@ class RepositoryService {
         longitude: placeData.longitude || 74.3587,
         phone: placeData.phone || '',
         openingHours: placeData.openingHours || '09:00 AM - 11:00 PM',
-        images: placeData.images?.length ? placeData.images : ['https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80'],
+        images: placeData.images?.length
+          ? placeData.images
+          : ['https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80'],
         status: placeData.status || 'Active',
         isFeatured: placeData.isFeatured || false,
         rating: placeData.rating || 4.5,
@@ -112,15 +317,17 @@ class RepositoryService {
       };
       this.places.unshift(newPlace);
       this.persist();
+      this.notify();
       return newPlace;
     }
   }
 
   public deletePlace(id: string): boolean {
     const lenBefore = this.places.length;
-    this.places = this.places.filter((p) => p.id !== id);
+    this.places = this.places.filter((p) => p.id !== id && p.id !== `place-${id}`);
     if (this.places.length !== lenBefore) {
       this.persist();
+      this.notify();
       return true;
     }
     return false;
@@ -160,97 +367,105 @@ class RepositoryService {
       result = result.filter((d) => (d.distance ?? 0) <= params.maxDistance!);
     }
 
-    // 4. Min Discount % Filter
+    // 4. Minimum Discount Percentage Filter
     if (params.minDiscount !== undefined && params.minDiscount > 0) {
       result = result.filter((d) => {
         const match = d.discountDetails.match(/(\d+)%/);
         if (match) {
-          return parseInt(match[1], 10) >= params.minDiscount!;
+          const val = parseInt(match[1], 10);
+          return val >= params.minDiscount!;
         }
-        return true; // Keep non-percentage (like BOGO) unless strict
+        return false;
       });
     }
 
-    // 5. Valid Today Filter
-    if (params.validToday) {
-      result = result.filter((d) => isOfferValid(d.startDate, d.endDate) && d.status === 'Active');
+    // 5. Bank Card Filter
+    if (params.bankCard && params.bankCard !== 'ALL') {
+      const cardNeedle = params.bankCard.toLowerCase();
+      result = result.filter((d) => {
+        if (!d.bankCard) return false;
+        const b = d.bankCard.toLowerCase();
+        return b.includes(cardNeedle) || b.includes('all cards') || cardNeedle === 'all';
+      });
     }
 
-    // 6. Verified Only Filter
-    if (params.verifiedOnly) {
-      result = result.filter((d) => d.confidence >= 90);
-    }
-
-    // 7. Student Only Filter
+    // 6. Student Only Filter
     if (params.studentOnly) {
       result = result.filter((d) => d.studentEligible);
     }
 
-    // 8. Bank/Card Filter
-    if (params.bankCard) {
-      result = result.filter(
-        (d) =>
-          d.bankCard &&
-          (d.bankCard.toLowerCase().includes(params.bankCard!.toLowerCase()) ||
-            d.bankCard === 'All Cards')
-      );
+    // 7. Verified Only (High Confidence >= 90)
+    if (params.verifiedOnly) {
+      result = result.filter((d) => d.confidence >= 90 && d.status === 'Active');
+    }
+
+    // 8. Valid Today Filter
+    if (params.validToday) {
+      result = result.filter((d) => isOfferValid(d.startDate, d.endDate) && d.status === 'Active');
     }
 
     // 9. Sorting
-    if (params.sortBy) {
-      switch (params.sortBy) {
-        case 'nearest':
-          result.sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
-          break;
-        case 'highest_discount':
-          result.sort((a, b) => {
-            const percA = parseInt(a.discountDetails.match(/(\d+)%/)?.[1] || '0', 10);
-            const percB = parseInt(b.discountDetails.match(/(\d+)%/)?.[1] || '0', 10);
-            return percB - percA;
-          });
-          break;
-        case 'ending_soon':
-          result.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
-          break;
-        case 'relevant':
-        default:
-          result.sort((a, b) => b.confidence - a.confidence);
-          break;
-      }
+    switch (params.sortBy) {
+      case 'nearest':
+        result.sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
+        break;
+      case 'highest_discount':
+        result.sort((a, b) => {
+          const valA = parseInt(a.discountDetails.match(/(\d+)%/)?.[1] || '0', 10);
+          const valB = parseInt(b.discountDetails.match(/(\d+)%/)?.[1] || '0', 10);
+          return valB - valA;
+        });
+        break;
+      case 'ending_soon':
+        result.sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime());
+        break;
+      case 'relevant':
+      default:
+        result.sort((a, b) => {
+          if (b.confidence !== a.confidence) {
+            return b.confidence - a.confidence;
+          }
+          return (a.distance ?? 0) - (b.distance ?? 0);
+        });
+        break;
     }
 
     return result;
   }
 
-  public getDiscountById(id: string, userLat: number = 31.5204, userLng: number = 74.3587): Discount | undefined {
-    const d = this.discounts.find((item) => item.id === id);
-    if (!d) return undefined;
-    const distance = calculateDistance(userLat, userLng, d.latitude, d.longitude);
-    return { ...d, distance };
+  public getDiscountById(id: string): Discount | undefined {
+    return this.discounts.find((d) => d.id === id || d.id === `disc-${id}`);
   }
 
-  public saveDiscount(discountData: Partial<Discount> & { placeId: string; offerTitle: string }): Discount {
+  public saveDiscount(
+    discountData: Partial<Discount> & {
+      placeId: string;
+      offerTitle: string;
+      category?: CategoryType;
+    }
+  ): Discount {
     const existingIndex = this.discounts.findIndex((d) => d.id === discountData.id);
     const now = new Date().toISOString();
 
     const targetPlace = this.getPlaceById(discountData.placeId);
-    const placeName = targetPlace ? targetPlace.name : discountData.placeName || 'Partner Merchant';
-    const category = targetPlace ? targetPlace.category : discountData.category || 'CAFE';
-    const latitude = targetPlace ? targetPlace.latitude : discountData.latitude || 31.5204;
-    const longitude = targetPlace ? targetPlace.longitude : discountData.longitude || 74.3587;
+    const placeName = targetPlace?.name || discountData.placeName || 'Unknown Venue';
+    const latitude = targetPlace?.latitude ?? discountData.latitude ?? 31.5204;
+    const longitude = targetPlace?.longitude ?? discountData.longitude ?? 74.3587;
+    const category = discountData.category || targetPlace?.category || 'CAFE';
 
     if (existingIndex >= 0) {
       const updated: Discount = {
         ...this.discounts[existingIndex],
         ...discountData,
         placeName,
-        category,
         latitude,
         longitude,
+        category,
         updatedAt: now,
       };
       this.discounts[existingIndex] = updated;
       this.persist();
+      this.notify();
       return updated;
     } else {
       const newDiscount: Discount = {
@@ -266,11 +481,14 @@ class RepositoryService {
         terms: discountData.terms || ['Show offer screen before ordering.', 'Cannot combine with other promos.'],
         redemptionInstructions: discountData.redemptionInstructions || ['Show offer badge to server upon billing.'],
         startDate: discountData.startDate || new Date().toISOString().split('T')[0],
-        endDate: discountData.endDate || '2026-12-31',
+        endDate: discountData.endDate || '2027-12-31',
         status: discountData.status || 'Active',
         lastVerifiedDate: now,
         confidence: discountData.confidence ?? 95,
-        image: discountData.image || (targetPlace?.images[0] ?? 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80'),
+        image:
+          discountData.image ||
+          targetPlace?.images[0] ||
+          'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80',
         latitude,
         longitude,
         createdAt: now,
@@ -278,22 +496,28 @@ class RepositoryService {
       };
       this.discounts.unshift(newDiscount);
       this.persist();
+      this.notify();
       return newDiscount;
     }
   }
 
   public deleteDiscount(id: string): boolean {
     const lenBefore = this.discounts.length;
-    this.discounts = this.discounts.filter((d) => d.id !== id);
+    this.discounts = this.discounts.filter((d) => d.id !== id && d.id !== `disc-${id}`);
     if (this.discounts.length !== lenBefore) {
       this.persist();
+      this.notify();
       return true;
     }
     return false;
   }
 
-  public verifyDiscount(id: string, status: Discount['status'] = 'Active', confidence: number = 99): Discount | undefined {
-    const d = this.discounts.find((item) => item.id === id);
+  public verifyDiscount(
+    id: string,
+    status: Discount['status'] = 'Active',
+    confidence: number = 99
+  ): Discount | undefined {
+    const d = this.discounts.find((item) => item.id === id || item.id === `disc-${id}`);
     if (!d) return undefined;
 
     const now = new Date().toISOString();
@@ -303,6 +527,7 @@ class RepositoryService {
     d.updatedAt = now;
 
     this.persist();
+    this.notify();
     return d;
   }
 
@@ -338,6 +563,7 @@ class RepositoryService {
     this.places = [...INITIAL_PLACES];
     this.discounts = [...INITIAL_DISCOUNTS];
     this.persist();
+    this.notify();
   }
 }
 

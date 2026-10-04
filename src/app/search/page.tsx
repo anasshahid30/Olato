@@ -61,21 +61,27 @@ function SearchPageContent() {
 
   // Execute query against repository
   useEffect(() => {
-    setIsSearching(true);
-    const combinedParams: SearchFilterParams = {
-      ...filters,
-      query: searchQuery.trim() || undefined,
-      category: activeCategory,
+    const executeSearch = () => {
+      setIsSearching(true);
+      const combinedParams: SearchFilterParams = {
+        ...filters,
+        query: searchQuery.trim() || undefined,
+        category: activeCategory,
+      };
+
+      const results = repository.getDiscounts(
+        combinedParams,
+        userCoords.latitude,
+        userCoords.longitude
+      );
+
+      setDiscounts(results);
+      setIsSearching(false);
     };
 
-    const results = repository.getDiscounts(
-      combinedParams,
-      userCoords.latitude,
-      userCoords.longitude
-    );
-
-    setDiscounts(results);
-    setIsSearching(false);
+    executeSearch();
+    const unsubscribe = repository.subscribe(executeSearch);
+    return () => unsubscribe();
   }, [filters, searchQuery, activeCategory, userCoords]);
 
   const handleUpdateFilters = (updated: Partial<SearchFilterParams>) => {
