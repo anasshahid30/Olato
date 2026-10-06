@@ -52,17 +52,20 @@ export function isOfferValid(startDateStr: string, endDateStr: string): boolean 
   return now >= start && now <= end;
 }
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 /**
  * Formats a date string into a friendly consumer string e.g. "Sep 30, 2026".
+ * Fully deterministic between server and client to avoid hydration mismatch.
  */
 export function formatDateFriendly(dateStr: string): string {
   try {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    if (isNaN(date.getTime())) return dateStr;
+    const month = MONTH_NAMES[date.getUTCMonth()];
+    const day = date.getUTCDate();
+    const year = date.getUTCFullYear();
+    return `${month} ${day}, ${year}`;
   } catch {
     return dateStr;
   }
@@ -74,6 +77,7 @@ export function formatDateFriendly(dateStr: string): string {
 export function getRelativeTimeString(dateStr: string): string {
   try {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
