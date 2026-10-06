@@ -2,6 +2,7 @@ import { Place, Discount, SearchFilterParams, OperationalMetrics, CategoryType }
 import { INITIAL_PLACES, INITIAL_DISCOUNTS } from './seed-data';
 import { calculateDistance, isOfferValid } from './distance';
 import { supabase } from '@/lib/supabase/client';
+import { scoreMatch } from './search-utils';
 
 const PLACES_STORAGE_KEY = 'olato_places_v2';
 const DISCOUNTS_STORAGE_KEY = 'olato_discounts_v2';
@@ -273,6 +274,31 @@ class RepositoryService {
     return result;
   }
 
+  /**
+   * Smart Search for Places: Matches name, area, slug, category, address & description
+   * Supports case-insensitivity, diacritics/accents, apostrophes, word order, and typos.
+   */
+  public searchPlaces(query: string, maxResults: number = 20): Place[] {
+    if (!query || !query.trim()) return this.places.slice(0, maxResults);
+    const q = query.trim();
+    const scored = this.places
+      .map((p) => {
+        const score = Math.max(
+          scoreMatch(q, p.name) * 1.6,
+          scoreMatch(q, p.slug) * 1.3,
+          scoreMatch(q, p.area) * 1.1,
+          scoreMatch(q, p.category) * 0.9,
+          scoreMatch(q, p.address) * 0.7,
+          scoreMatch(q, p.description) * 0.5
+        );
+        return { place: p, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    return scored.slice(0, maxResults).map((item) => item.place);
+  }
+
   public getPlaceById(id: string): Place | undefined {
     return this.places.find((p) => p.id === id || p.id === `place-${id}`);
   }
@@ -344,17 +370,33 @@ class RepositoryService {
       return { ...d, distance };
     });
 
-    // 1. Text Query Search (place name, offer title, description, bank, details)
+    // 1. Text Query Search (smart normalization, accent-insensitive, punctuation-insensitive, typo-tolerant, multi-word)
     if (params.query && params.query.trim()) {
-      const q = params.query.toLowerCase().trim();
-      result = result.filter(
-        (d) =>
-          d.placeName.toLowerCase().includes(q) ||
-          d.offerTitle.toLowerCase().includes(q) ||
-          d.description.toLowerCase().includes(q) ||
-          d.discountDetails.toLowerCase().includes(q) ||
-          (d.bankCard && d.bankCard.toLowerCase().includes(q))
-      );
+      const q = params.query.trim();
+      const scored = result
+        .map((d) => {
+          const place = this.getPlaceById(d.placeId);
+          const score = Math.max(
+            scoreMatch(q, d.placeName) * 1.6,
+            place ? scoreMatch(q, place.name) * 1.6 : 0,
+            scoreMatch(q, d.offerTitle) * 1.2,
+            scoreMatch(q, d.bankCard || '') * 1.2,
+            place ? scoreMatch(q, place.area) * 1.1 : 0,
+            place ? scoreMatch(q, place.slug) * 1.1 : 0,
+            scoreMatch(q, d.discountDetails),
+            scoreMatch(q, d.category),
+            place ? scoreMatch(q, place.address) * 0.7 : 0,
+            scoreMatch(q, d.description) * 0.6
+          );
+          return { discount: d, score };
+        })
+        .filter((item) => item.score > 0);
+
+      // Rank by relevance if sorting by relevant or default
+      if (!params.sortBy || params.sortBy === 'relevant') {
+        scored.sort((a, b) => b.score - a.score);
+      }
+      result = scored.map((item) => item.discount);
     }
 
     // 2. Category Filter (CAFE, RESTAURANT, FEATURED_PLACE)

@@ -79,18 +79,32 @@ function LeafletMapContainer({
     setMapInstance(map);
 
     return () => {
-      map.remove();
+      try {
+        map.remove();
+      } catch (err) {
+        // ignore
+      }
+      setMapInstance(null);
     };
   }, [LModule, centerLat, centerLng]);
 
   // Update Markers
   useEffect(() => {
-    if (!mapInstance || !LModule) return;
+    if (!mapInstance || !LModule || !mapInstance._panes) return;
 
     // Clear existing markers layer
     const markersGroup = LModule.layerGroup().addTo(mapInstance);
 
     discounts.forEach((disc) => {
+      if (
+        typeof disc.latitude !== 'number' ||
+        typeof disc.longitude !== 'number' ||
+        isNaN(disc.latitude) ||
+        isNaN(disc.longitude)
+      ) {
+        return;
+      }
+
       const isSelected = disc.id === selectedDiscountId;
 
       const markerHtml = `
@@ -135,7 +149,14 @@ function LeafletMapContainer({
     });
 
     return () => {
-      markersGroup.clearLayers();
+      try {
+        markersGroup.clearLayers();
+        if (mapInstance && mapInstance._panes) {
+          mapInstance.removeLayer(markersGroup);
+        }
+      } catch (e) {
+        // ignore
+      }
     };
   }, [mapInstance, LModule, discounts, selectedDiscountId, onSelectDiscount]);
 

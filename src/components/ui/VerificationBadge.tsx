@@ -36,7 +36,7 @@ export function VerificationBadge({
         <span>Verified</span>
       </span>
       {showDetail && (
-        <span className="text-xs text-[#6F7078] font-normal">
+        <span suppressHydrationWarning className="text-xs text-[#6F7078] font-normal">
           {timeString.toLowerCase().includes('ago') ? `Verified ${timeString}` : `Verified ${timeString}`}
         </span>
       )}

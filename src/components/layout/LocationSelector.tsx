@@ -33,7 +33,7 @@ export function LocationSelector({ className = '' }: { className?: string }) {
         </span>
 
         <MapPin className="w-4 h-4 text-[#5B5CE2] shrink-0" />
-        <span className="max-w-[130px] sm:max-w-[180px] truncate">{activeHub.name}</span>
+        <span suppressHydrationWarning className="max-w-[130px] sm:max-w-[180px] truncate">{activeHub.name}</span>
         <ChevronDown className="w-3.5 h-3.5 text-[#6F7078] shrink-0" />
       </button>
 
