@@ -2,7 +2,14 @@ import { Place, Discount, SearchFilterParams, OperationalMetrics, CategoryType }
 import { INITIAL_PLACES, INITIAL_DISCOUNTS } from './seed-data';
 import { calculateDistance, isOfferValid } from './distance';
 import { supabase } from '@/lib/supabase/client';
-import { scoreMatch } from './search-utils';
+import {
+  scoreMatch,
+  detectBankInQuery,
+  matchesBank,
+  isCompetitorBank,
+  extractCoreQuery,
+  cleanAlphanumeric,
+} from './search-utils';
 
 const PLACES_STORAGE_KEY = 'olato_places_v2';
 const DISCOUNTS_STORAGE_KEY = 'olato_discounts_v2';
@@ -281,16 +288,38 @@ class RepositoryService {
   public searchPlaces(query: string, maxResults: number = 20): Place[] {
     if (!query || !query.trim()) return this.places.slice(0, maxResults);
     const q = query.trim();
+    const coreQ = extractCoreQuery(q);
+    const detectedBank = detectBankInQuery(q);
+
     const scored = this.places
       .map((p) => {
-        const score = Math.max(
+        let score = Math.max(
+          scoreMatch(coreQ, p.name) * 1.8,
           scoreMatch(q, p.name) * 1.6,
-          scoreMatch(q, p.slug) * 1.3,
-          scoreMatch(q, p.area) * 1.1,
-          scoreMatch(q, p.category) * 0.9,
-          scoreMatch(q, p.address) * 0.7,
-          scoreMatch(q, p.description) * 0.5
+          scoreMatch(coreQ, p.slug) * 1.3,
+          scoreMatch(coreQ, p.area) * 1.2,
+          scoreMatch(coreQ, p.category),
+          scoreMatch(coreQ, p.address) * 0.7,
+          scoreMatch(coreQ, p.description) * 0.5
         );
+
+        // If a specific bank was searched, give high priority to places that offer that bank's discount
+        if (detectedBank) {
+          const hasBankDeal = this.discounts.some((d) => {
+            const isPlaceMatch =
+              d.placeId === p.id ||
+              d.placeId === `place-${p.id}` ||
+              p.id === `place-${d.placeId}`;
+            return isPlaceMatch && matchesBank(detectedBank, d.bankCard || '');
+          });
+          if (hasBankDeal) {
+            score = Math.max(score, 120);
+          } else if (coreQ === detectedBank.id || detectedBank.matchPatterns.includes(coreQ)) {
+            // Pure bank search: don't show places that don't have this bank's deals
+            score = 0;
+          }
+        }
+
         return { place: p, score };
       })
       .filter((item) => item.score > 0)
@@ -370,24 +399,79 @@ class RepositoryService {
       return { ...d, distance };
     });
 
-    // 1. Text Query Search (smart normalization, accent-insensitive, punctuation-insensitive, typo-tolerant, multi-word)
+    // 1. Text Query Search (smart normalization, accent-insensitive, bank-disambiguated, typo-tolerant)
     if (params.query && params.query.trim()) {
       const q = params.query.trim();
+      const detectedBank = detectBankInQuery(q);
+      const coreQ = extractCoreQuery(q);
+
       const scored = result
         .map((d) => {
           const place = this.getPlaceById(d.placeId);
-          const score = Math.max(
+
+          // Bank-Specific Disambiguation
+          if (detectedBank) {
+            const cardMatchesBank = matchesBank(detectedBank, d.bankCard || '') || matchesBank(detectedBank, d.offerTitle);
+            const cardIsCompetitor = isCompetitorBank(d.bankCard || '', detectedBank.id);
+
+            // If the discount belongs to a competitor bank (e.g. Bank Al Habib when searching HBL), DISQUALIFY
+            if (cardIsCompetitor && !cardMatchesBank) {
+              return { discount: d, score: 0 };
+            }
+
+            // If card matches the requested bank: high priority score!
+            if (cardMatchesBank) {
+              let baseScore = 150;
+              const cleanCard = cleanAlphanumeric(d.bankCard || '');
+              const cleanQ = cleanAlphanumeric(q);
+
+              // Prioritize core commercial cards when wallet not explicitly requested
+              if (cleanQ.includes('konnect')) {
+                baseScore = cleanCard.includes('konnect') ? 200 : 160;
+              } else {
+                baseScore = cleanCard.includes('konnect') ? 160 : 200;
+              }
+
+              const extraPlaceScore = place ? Math.max(scoreMatch(coreQ, place.name), scoreMatch(coreQ, place.area)) : 0;
+              return { discount: d, score: baseScore + extraPlaceScore };
+            }
+
+            // If the query was purely a bank search (e.g. "HBL", "HBL discounts", "HBL cards"),
+            // and this discount does NOT belong to the requested bank, drop it!
+            if (coreQ === detectedBank.id || detectedBank.matchPatterns.includes(coreQ)) {
+              return { discount: d, score: 0 };
+            }
+          }
+
+          // General Multi-Field Matching (using both full query and core entity query)
+          const targetScores = [
+            // Place Name
+            scoreMatch(coreQ, d.placeName) * 1.8,
+            place ? scoreMatch(coreQ, place.name) * 1.8 : 0,
             scoreMatch(q, d.placeName) * 1.6,
             place ? scoreMatch(q, place.name) * 1.6 : 0,
+
+            // Bank Card
+            scoreMatch(coreQ, d.bankCard || '') * 1.6,
+            scoreMatch(q, d.bankCard || '') * 1.4,
+
+            // Area / Location
+            place ? scoreMatch(coreQ, place.area) * 1.3 : 0,
+            place ? scoreMatch(q, place.area) * 1.2 : 0,
+
+            // Food / Offer Title
+            scoreMatch(coreQ, d.offerTitle) * 1.3,
             scoreMatch(q, d.offerTitle) * 1.2,
-            scoreMatch(q, d.bankCard || '') * 1.2,
-            place ? scoreMatch(q, place.area) * 1.1 : 0,
-            place ? scoreMatch(q, place.slug) * 1.1 : 0,
-            scoreMatch(q, d.discountDetails),
-            scoreMatch(q, d.category),
-            place ? scoreMatch(q, place.address) * 0.7 : 0,
-            scoreMatch(q, d.description) * 0.6
-          );
+
+            // Category & Details
+            scoreMatch(coreQ, d.category),
+            scoreMatch(coreQ, d.discountDetails),
+            place ? scoreMatch(coreQ, place.slug) * 1.1 : 0,
+            place ? scoreMatch(coreQ, place.address) * 0.7 : 0,
+            scoreMatch(coreQ, d.description) * 0.6,
+          ];
+
+          const score = Math.max(...targetScores);
           return { discount: d, score };
         })
         .filter((item) => item.score > 0);
