@@ -21,7 +21,7 @@ export function FilterBar({
     filters.validToday ||
     filters.verifiedOnly ||
     filters.studentOnly ||
-    (filters.maxDistance && filters.maxDistance < 20) ||
+    (filters.maxDistance !== undefined && filters.maxDistance > 0) ||
     (filters.minDiscount && filters.minDiscount > 0) ||
     filters.bankCard;
 
@@ -32,10 +32,11 @@ export function FilterBar({
         <MapPin className="w-3.5 h-3.5 text-[#5B5CE2]" />
         <span>Distance:</span>
         <select
-          value={filters.maxDistance ?? 10}
+          value={filters.maxDistance ?? 0}
           onChange={(e) => onChangeFilters({ maxDistance: Number(e.target.value) })}
           className="bg-transparent font-semibold outline-none cursor-pointer text-[#5B5CE2]"
         >
+          <option value={0}>Any distance</option>
           <option value={2}>Within 2 km</option>
           <option value={5}>Within 5 km</option>
           <option value={10}>Within 10 km</option>

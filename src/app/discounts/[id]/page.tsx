@@ -1,5 +1,8 @@
 'use client';
 
+import { groupDiscounts } from '@/lib/group-discounts';
+import { PlaceOffers } from '@/components/ui/PlaceOffers';
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -54,15 +57,15 @@ export default function DiscountDetailPage() {
     const found = repository.getDiscountById(discountId);
     if (found) {
       const distance = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude).find((d) => d.id === found.id)?.distance;
-      setDiscount({ ...found, distance });
+      setDiscount({ ...found, distance, offers: repository.getDiscounts({}, userCoords.latitude, userCoords.longitude).filter((d) => d.placeId === found.placeId) });
 
       const foundPlace = repository.getPlaceById(found.placeId);
       if (foundPlace) setPlace(foundPlace);
 
       // Find other discounts in the same category
-      const others = repository
+      const others = groupDiscounts(repository
         .getDiscounts({ category: found.category }, userCoords.latitude, userCoords.longitude)
-        .filter((d) => d.id !== found.id)
+        .filter((d) => d.placeId !== found.placeId))
         .slice(0, 3);
       setSimilarDiscounts(others);
     }
@@ -181,6 +184,7 @@ export default function DiscountDetailPage() {
             </div>
 
             {/* Terms & Conditions Section */}
+            <PlaceOffers discount={discount} />
             <div className="rounded-3xl bg-white border border-[#E7E7EC] p-6 sm:p-8 space-y-4 shadow-xs">
               <h3 className="text-lg font-bold text-[#15151A] flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-[#5B5CE2]" />

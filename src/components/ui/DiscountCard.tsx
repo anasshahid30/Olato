@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { PlaceOffers } from './PlaceOffers';
 import { Discount } from '@/lib/types';
 import { DiscountBadge } from './DiscountBadge';
 import { VerificationBadge } from './VerificationBadge';
@@ -64,6 +64,7 @@ export function DiscountCard({ discount, className = '', horizontal = false }: D
             </Link>
 
             <p className="text-sm font-medium text-[#15151A] line-clamp-2 mb-3">{discount.offerTitle}</p>
+            <PlaceOffers discount={discount} />
           </div>
 
           <div className="pt-3 border-t border-[#E7E7EC]/60 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -130,6 +131,7 @@ export function DiscountCard({ discount, className = '', horizontal = false }: D
         </Link>
 
         <p className="text-sm font-medium text-[#6F7078] line-clamp-2 mb-4 flex-1">{discount.offerTitle}</p>
+        <PlaceOffers discount={discount} />
 
         {/* Card Footer: Verification & Expiry */}
         <div className="pt-3 border-t border-[#E7E7EC]/60 flex items-center justify-between gap-2 text-xs">

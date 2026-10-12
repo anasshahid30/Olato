@@ -1,5 +1,9 @@
 'use client';
 
+import { groupDiscounts } from '@/lib/group-discounts';
+import { CardPreference } from '@/components/ui/CardPreference';
+import { useCardPreference } from '@/hooks/useCardPreference';
+
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -15,8 +19,9 @@ import { useLocation } from '@/context/LocationContext';
 import { Coffee, UtensilsCrossed, Star, Sparkles, Search, MapPin, X, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 function SearchPageContent() {
+  const { cardPreference, setCardPreference } = useCardPreference();
   const searchParams = useSearchParams();
-  const { userCoords, activeHub } = useLocation();
+  const { userCoords, activeHub, isUsingGPS } = useLocation();
 
   // URL Query Parameters
   const queryParam = searchParams.get('q') || '';
@@ -37,22 +42,16 @@ function SearchPageContent() {
     verifiedOnly: verifiedOnlyParam,
     studentOnly: studentOnlyParam,
     bankCard: bankCardParam,
-    maxDistance: 15,
+    maxDistance: 0,
     sortBy: 'relevant',
   });
 
   const [isMounted, setIsMounted] = useState(false);
-  const [discounts, setDiscounts] = useState<Discount[]>(() => {
-    return repository.getDiscounts(
-      { query: queryParam || undefined, category: categoryParam },
-      userCoords.latitude,
-      userCoords.longitude
-    );
-  });
-  const [matchedPlaces, setMatchedPlaces] = useState<Place[]>(() => {
-    return queryParam ? repository.searchPlaces(queryParam, 2) : [];
-  });
+  // Browser storage and live repository data load after hydration.
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [matchedPlaces, setMatchedPlaces] = useState<Place[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const effectiveSort = isUsingGPS && (!filters.sortBy || filters.sortBy === 'relevant') ? 'nearest' : filters.sortBy;
 
   useEffect(() => {
     setIsMounted(true);
@@ -82,6 +81,8 @@ function SearchPageContent() {
 
       const combinedParams: SearchFilterParams = {
         ...filters,
+        sortBy: effectiveSort,
+        bankCard: filters.bankCard ?? (cardPreference || undefined),
         query: trimmedQ || undefined,
         category: activeCategory,
       };
@@ -96,7 +97,8 @@ function SearchPageContent() {
 
       // Also search places for the query to show matching place spotlight
       if (trimmedQ) {
-        const places = repository.searchPlaces(trimmedQ, 2);
+        const matchingPlaceIds = new Set(results.map((offer) => offer.placeId));
+        const places = repository.searchPlaces(trimmedQ, 2).filter((place) => matchingPlaceIds.has(place.id));
         setMatchedPlaces(places);
       } else {
         setMatchedPlaces([]);
@@ -108,20 +110,21 @@ function SearchPageContent() {
     executeSearch();
     const unsubscribe = repository.subscribe(executeSearch);
     return () => unsubscribe();
-  }, [filters, searchQuery, activeCategory, userCoords]);
+  }, [filters, searchQuery, activeCategory, userCoords, cardPreference, effectiveSort]);
 
   const handleUpdateFilters = (updated: Partial<SearchFilterParams>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
   };
 
   const handleResetFilters = () => {
+    setCardPreference('');
     setSearchQuery('');
     setActiveCategory('ALL');
     setMatchedPlaces([]);
     setFilters({
       query: '',
       category: 'ALL',
-      maxDistance: 15,
+      maxDistance: 0,
       minDiscount: 0,
       validToday: false,
       verifiedOnly: false,
@@ -264,7 +267,7 @@ function SearchPageContent() {
         {/* Filter Controls Bar */}
         <div className="bg-white border border-[#E7E7EC] rounded-2xl p-4 shadow-xs">
           <FilterBar
-            filters={{ ...filters, category: activeCategory, query: searchQuery }}
+            filters={{ ...filters, sortBy: effectiveSort, category: activeCategory, query: searchQuery }}
             onChangeFilters={handleUpdateFilters}
             onReset={handleResetFilters}
           />
@@ -288,10 +291,12 @@ function SearchPageContent() {
           </div>
         )}
 
+        <CardPreference value={filters.bankCard ?? cardPreference} onChange={(card) => handleUpdateFilters({ bankCard: card || undefined })} />
+
         {/* Results Header */}
         <div className="flex items-center justify-between text-xs font-bold text-[#6F7078] uppercase tracking-wider pt-2">
-          <span suppressHydrationWarning>{discounts.length} {discounts.length === 1 ? 'Discount Found' : 'Discounts Found'}</span>
-          <span>Verified Local Places</span>
+          <span suppressHydrationWarning>{groupDiscounts(discounts).length} places ? {discounts.length} offers</span>
+          <span>{effectiveSort === 'nearest' ? 'Closest places first' : 'Verified Local Places'}</span>
         </div>
 
         {/* Discounts Grid */}
@@ -305,7 +310,7 @@ function SearchPageContent() {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {discounts.map((discount) => (
+            {groupDiscounts(discounts).map((discount) => (
               <DiscountCard key={discount.id} discount={discount} />
             ))}
           </div>
