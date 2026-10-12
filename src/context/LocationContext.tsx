@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { CityHub, LocationCoordinates } from '@/lib/types';
 import { LAHORE_HUBS } from '@/lib/seed-data';
 
@@ -22,6 +22,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     longitude: LAHORE_HUBS[0].longitude,
   });
   const [isUsingGPS, setIsUsingGPS] = useState(false);
+  const locationRequest = useRef(0);
 
   useEffect(() => {
     try {
@@ -39,6 +40,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setHub = (hub: CityHub) => {
+    locationRequest.current += 1;
     setActiveHub(hub);
     setUserCoords({ latitude: hub.latitude, longitude: hub.longitude });
     setIsUsingGPS(false);
@@ -54,9 +56,11 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
+    const requestId = ++locationRequest.current;
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          if (requestId !== locationRequest.current) { resolve(false); return; }
           const coords = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -67,17 +71,33 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
             id: 'gps-custom',
             name: 'Current Location',
             area: 'Near You',
-            city: 'Lahore',
+            city: '',
             latitude: coords.latitude,
             longitude: coords.longitude,
           });
           resolve(true);
+          // GPS works immediately; the area label updates when the lookup finishes.
+          void fetch(`/api/location?lat=${coords.latitude}&lon=${coords.longitude}`, { signal: AbortSignal.timeout(6000) })
+            .then(async (response) => {
+              if (!response.ok) return;
+              const location = await response.json() as { name?: string; area?: string; city?: string };
+              if (requestId !== locationRequest.current || !location.name) return;
+              setActiveHub({
+                id: 'gps-custom',
+                name: location.name,
+                area: location.area || location.name,
+                city: location.city || '',
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+              });
+            })
+            .catch(() => { /* Keep the GPS fallback when the lookup is unavailable. */ });
         },
         (error) => {
           console.warn('Geolocation failed:', error);
           resolve(false);
         },
-        { timeout: 8000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
       );
     });
   };

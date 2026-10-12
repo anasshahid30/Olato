@@ -1,5 +1,10 @@
 'use client';
 
+import { groupDiscounts } from '@/lib/group-discounts';
+import { PlaceOffers } from '@/components/ui/PlaceOffers';
+import { CardPreference } from '@/components/ui/CardPreference';
+import { useCardPreference } from '@/hooks/useCardPreference';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
@@ -26,32 +31,37 @@ import {
 } from 'lucide-react';
 
 export default function MapPage() {
+  const { cardPreference, setCardPreference } = useCardPreference();
+  const [nearbyRadius, setNearbyRadius] = useState(10);
   const { userCoords, activeHub, isUsingGPS, requestGPSLocation } = useLocation();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryType | 'ALL'>('ALL');
-  const [selectedDiscountId, setSelectedDiscountId] = useState<string>('disc-1');
+  const [selectedDiscountId, setSelectedDiscountId] = useState<string>('');
   const [isRequestingGPS, setIsRequestingGPS] = useState(false);
 
   useEffect(() => {
     const loadDiscounts = () => {
-      const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
+      const all = repository.getDiscounts({ sortBy: 'nearest', maxDistance: 25, bankCard: cardPreference || undefined }, userCoords.latitude, userCoords.longitude);
       setDiscounts(all);
-      if (all.length > 0 && !selectedDiscountId) {
-        setSelectedDiscountId(all[0].id);
-      }
+      setSelectedDiscountId('');
     };
 
     loadDiscounts();
     const unsubscribe = repository.subscribe(loadDiscounts);
     return () => unsubscribe();
-  }, [userCoords, selectedDiscountId]);
+  }, [userCoords, nearbyRadius, cardPreference]);
 
   const filteredDiscounts = discounts.filter((d) => {
+    if (d.distance === undefined || d.distance > nearbyRadius) return false;
     if (activeCategory === 'ALL') return true;
     return d.category === activeCategory;
   });
 
-  const selectedDiscount = discounts.find((d) => d.id === selectedDiscountId) || discounts[0];
+  const venues = groupDiscounts(filteredDiscounts);
+  const fartherVenues = venues.length < 4 ? groupDiscounts(discounts.filter((d) =>
+    d.distance !== undefined && d.distance > nearbyRadius && (activeCategory === 'ALL' || d.category === activeCategory)
+  )).slice(0, 8 - venues.length) : [];
+  const selectedDiscount = venues.find((d) => d.offers?.some((offer) => offer.id === selectedDiscountId)) || venues[0];
 
   const handleUseGPS = async () => {
     setIsRequestingGPS(true);
@@ -121,17 +131,26 @@ export default function MapPage() {
           </div>
         </div>
 
+        <CardPreference />
+        <label className="flex items-center gap-2 text-xs font-semibold text-[#6F7078]">
+          Nearest first · Distance
+          <select value={nearbyRadius} onChange={(event) => setNearbyRadius(Number(event.target.value))} className="rounded-lg border border-[#E7E7EC] bg-white px-3 py-2 text-[#5B5CE2]">
+            <option value={5}>Within 5 km</option>
+            <option value={10}>Within 10 km</option>
+            <option value={25}>Within 25 km</option>
+          </select>
+        </label>
         {/* Map & Preview Split View */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Map Box */}
-          <div className="lg:col-span-8 rounded-3xl overflow-hidden border border-[#E7E7EC] shadow-md min-h-[540px] flex">
+          <div className="lg:col-span-8 rounded-3xl overflow-hidden border border-[#E7E7EC] shadow-md">
             <InteractiveMap
               discounts={filteredDiscounts}
-              selectedDiscountId={selectedDiscountId}
+              selectedDiscountId={selectedDiscount?.id}
               onSelectDiscount={(id) => setSelectedDiscountId(id)}
               centerLat={userCoords.latitude}
               centerLng={userCoords.longitude}
-              className="h-[540px] lg:h-full w-full"
+              className="h-[360px] sm:h-[480px] w-full"
             />
           </div>
 
@@ -167,6 +186,7 @@ export default function MapPage() {
                   <p className="text-xs text-[#6F7078] line-clamp-2">{selectedDiscount.description}</p>
                 </div>
 
+                <PlaceOffers discount={selectedDiscount} />
                 <div className="pt-2 border-t border-[#E7E7EC] flex items-center justify-between text-xs">
                   <VerificationBadge
                     lastVerifiedDate={selectedDiscount.lastVerifiedDate}
@@ -195,13 +215,31 @@ export default function MapPage() {
             )}
 
             {/* Scrollable list of other pins */}
+            {venues.length < 4 && (
+              <div className="rounded-2xl border border-[#E7E7EC] bg-white p-4 space-y-3">
+                <h3 className="text-sm font-bold">More places to choose from</h3>
+                {fartherVenues.length > 0 && <p className="text-xs text-[#6F7078]">Beyond {nearbyRadius} km, up to 25 km. Your card and category still apply.</p>}
+                {fartherVenues.map((venue) => (
+                  <Link key={venue.placeId} href={`/discounts/${venue.id}`} className="flex items-center justify-between gap-3 text-xs hover:text-[#5B5CE2]">
+                    <span className="min-w-0 truncate font-semibold">{venue.placeName}</span>
+                    <span className="shrink-0 text-[#6F7078]">{formatDistance(venue.distance!)}</span>
+                  </Link>
+                ))}
+                <div className="flex flex-wrap gap-3 text-xs font-semibold text-[#5B5CE2]">
+                  {nearbyRadius < 25 && <button type="button" onClick={() => setNearbyRadius(25)} className="underline">Widen to 25 km</button>}
+                  {activeCategory !== 'ALL' && <button type="button" onClick={() => setActiveCategory('ALL')} className="underline">All categories</button>}
+                  {cardPreference && <button type="button" onClick={() => setCardPreference('')} className="underline">Other card offers</button>}
+                </div>
+              </div>
+            )}
             <div className="bg-[#FAF9F6] border border-[#E7E7EC] rounded-3xl p-4 flex-1 space-y-3 overflow-hidden flex flex-col">
               <span className="text-xs font-bold text-[#6F7078] uppercase tracking-wider block">
-                Visible Venues ({filteredDiscounts.length})
+                Visible Venues ({venues.length})
               </span>
 
               <div className="space-y-2 overflow-y-auto max-h-[220px] pr-1">
-                {filteredDiscounts.map((d) => (
+                {venues.length === 0 && <p className="p-3 text-sm text-[#6F7078]">No matching places within {nearbyRadius} km. Try a wider distance or change your filters.</p>}
+                {venues.map((d) => (
                   <div
                     key={d.id}
                     onClick={() => setSelectedDiscountId(d.id)}
@@ -213,7 +251,7 @@ export default function MapPage() {
                   >
                     <div className="min-w-0">
                       <h4 className="text-xs font-bold text-[#15151A] truncate">{d.placeName}</h4>
-                      <p className="text-[11px] text-[#6F7078] truncate">{d.offerTitle}</p>
+                      <p className="text-[11px] text-[#6F7078] truncate">{d.offers && d.offers.length > 1 ? `${d.offers.length} available offers` : d.offerTitle}</p>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">

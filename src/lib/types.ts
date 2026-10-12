@@ -41,6 +41,7 @@ export interface Place {
 }
 
 export interface Discount {
+  offers?: Discount[];
   id: string;
   placeId: string;
   placeName: string;

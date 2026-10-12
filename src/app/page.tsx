@@ -1,5 +1,10 @@
 'use client';
 
+import { groupDiscounts } from '@/lib/group-discounts';
+import { CardPreference } from '@/components/ui/CardPreference';
+import { useCardPreference } from '@/hooks/useCardPreference';
+import { PlaceOffers } from '@/components/ui/PlaceOffers';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
@@ -33,21 +38,24 @@ import {
 } from 'lucide-react';
 
 export default function OlatoHomePage() {
+  const { cardPreference, setCardPreference } = useCardPreference();
   const { activeHub, userCoords } = useLocation();
   const { savedIds, isSaved } = useSavedDeals();
 
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryType | 'ALL'>('ALL');
-  const [selectedMapDiscountId, setSelectedMapDiscountId] = useState<string>('disc-1');
+  const [nearbyRadius, setNearbyRadius] = useState(10);
+  const [selectedMapDiscountId, setSelectedMapDiscountId] = useState<string>('');
   const [featuredDiscounts, setFeaturedDiscounts] = useState<Discount[]>([]);
 
   // Load live discounts relative to user/hub coordinates
   useEffect(() => {
     const loadDiscounts = () => {
-      const all = repository.getDiscounts({}, userCoords.latitude, userCoords.longitude);
+      const all = repository.getDiscounts({ sortBy: 'nearest' }, userCoords.latitude, userCoords.longitude);
       setDiscounts(all);
+      setSelectedMapDiscountId('');
       // Featured deals with high confidence
-      setFeaturedDiscounts(all.filter((d) => d.confidence >= 90).slice(0, 3));
+      setFeaturedDiscounts(groupDiscounts(all.filter((d) => d.confidence >= 90)).slice(0, 3));
     };
 
     loadDiscounts();
@@ -55,12 +63,20 @@ export default function OlatoHomePage() {
     return () => unsubscribe();
   }, [userCoords]);
 
-  const nearbyDiscounts = discounts.filter((d) => {
+  const matchingDiscounts = discounts.filter((d) => {
+    if (cardPreference && !d.bankCard?.toLowerCase().includes(cardPreference.toLowerCase()) && d.bankCard?.toLowerCase() !== 'all cards') return false;
     if (activeCategory === 'ALL') return true;
     return d.category === activeCategory;
   });
 
-  const selectedMapDiscount = discounts.find((d) => d.id === selectedMapDiscountId) || discounts[0];
+  const nearbyDiscounts = matchingDiscounts.filter((d) => d.distance !== undefined && d.distance <= nearbyRadius);
+  const nearbyPlaces = groupDiscounts(nearbyDiscounts);
+  const fartherPlaces = nearbyPlaces.length < 4
+    ? groupDiscounts(matchingDiscounts.filter((d) => d.distance !== undefined && d.distance > nearbyRadius && d.distance <= 25)).slice(0, 8 - nearbyPlaces.length)
+    : [];
+
+  const mapPlaces = groupDiscounts(nearbyDiscounts);
+  const selectedMapDiscount = mapPlaces.find((d) => d.offers?.some((offer) => offer.id === selectedMapDiscountId)) || mapPlaces[0];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF9F6] text-[#15151A]">
@@ -164,11 +180,49 @@ export default function OlatoHomePage() {
             </div>
 
             {/* Grid Showcase of Live Deals */}
+            <CardPreference />
+            <label className="flex items-center gap-2 text-xs font-semibold text-[#6F7078]">
+              Nearest first · Distance
+              <select value={nearbyRadius} onChange={(event) => setNearbyRadius(Number(event.target.value))} className="rounded-lg border border-[#E7E7EC] bg-white px-3 py-2 text-[#5B5CE2]">
+                <option value={5}>Within 5 km</option>
+                <option value={10}>Within 10 km</option>
+                <option value={25}>Within 25 km</option>
+              </select>
+            </label>
+            {nearbyDiscounts.length === 0 && (
+              <div className="rounded-xl border border-[#E7E7EC] p-6 text-sm text-[#6F7078]">
+                No offers match within {nearbyRadius} km. Try a wider distance or another card or category.
+                {cardPreference && <button type="button" onClick={() => setCardPreference('')} className="ml-2 font-semibold text-[#5B5CE2] underline">Show all cards</button>}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {nearbyDiscounts.slice(0, 8).map((deal) => (
+              {nearbyPlaces.slice(0, 8).map((deal) => (
                 <DiscountCard key={deal.id} discount={deal} />
               ))}
             </div>
+
+            {fartherPlaces.length > 0 && (
+              <div className="space-y-4 pt-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#15151A]">A little farther away</h3>
+                    <p className="text-xs text-[#6F7078]">More choices beyond {nearbyRadius} km, up to 25 km. Your card and category still apply.</p>
+                  </div>
+                  <button type="button" onClick={() => setNearbyRadius(25)} className="rounded-xl border border-[#E7E7EC] px-4 py-2 text-xs font-semibold text-[#5B5CE2] hover:bg-[#EEF0FF]">Search within 25 km</button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {fartherPlaces.map((deal) => <DiscountCard key={deal.placeId} discount={deal} />)}
+                </div>
+              </div>
+            )}
+            {nearbyPlaces.length < 4 && (
+              <div className="flex flex-wrap items-center gap-3 text-xs text-[#6F7078]">
+                <span>Want more choices?</span>
+                {nearbyRadius < 25 && <button type="button" onClick={() => setNearbyRadius(25)} className="font-semibold text-[#5B5CE2] underline">Widen to 25 km</button>}
+                {activeCategory !== 'ALL' && <button type="button" onClick={() => setActiveCategory('ALL')} className="font-semibold text-[#5B5CE2] underline">Browse all categories</button>}
+                {cardPreference && <button type="button" onClick={() => setCardPreference('')} className="font-semibold text-[#5B5CE2] underline">Browse other card offers</button>}
+              </div>
+            )}
 
             {/* Bottom View All Action */}
             <div className="flex justify-center pt-6">
@@ -355,6 +409,7 @@ export default function OlatoHomePage() {
                       <span>{deal.confidence}% Conf.</span>
                     </div>
 
+                    <PlaceOffers discount={deal} />
                     <Link href={`/discounts/${deal.id}`}>
                       <MagneticButton variant="primary" size="sm" icon={<ArrowRight className="w-3.5 h-3.5" />}>
                         View deal
@@ -451,12 +506,12 @@ export default function OlatoHomePage() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
               {/* Left 2 Cols: Interactive Map */}
-              <div className="lg:col-span-2 rounded-3xl overflow-hidden border border-[#E7E7EC] shadow-md min-h-[460px]">
+              <div className="lg:col-span-2 rounded-3xl overflow-hidden border border-[#E7E7EC] shadow-md">
                 <InteractiveMap
-                  discounts={discounts}
-                  selectedDiscountId={selectedMapDiscountId}
+                  discounts={nearbyDiscounts}
+                  selectedDiscountId={selectedMapDiscount?.id}
                   onSelectDiscount={(id) => setSelectedMapDiscountId(id)}
                   centerLat={userCoords.latitude}
                   centerLng={userCoords.longitude}
@@ -514,6 +569,7 @@ export default function OlatoHomePage() {
                   )}
                 </div>
 
+                {selectedMapDiscount && <PlaceOffers discount={selectedMapDiscount} />}
                 {selectedMapDiscount && (
                   <div className="pt-4 border-t border-[#E7E7EC] flex items-center gap-3">
                     <Link href={`/discounts/${selectedMapDiscount.id}`} className="flex-1">
@@ -637,8 +693,7 @@ export default function OlatoHomePage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {discounts
-                .filter((d) => isSaved(d.id))
+              {groupDiscounts(discounts.filter((d) => isSaved(d.id)))
                 .slice(0, 3)
                 .map((deal) => (
                   <DiscountCard key={deal.id} discount={deal} />

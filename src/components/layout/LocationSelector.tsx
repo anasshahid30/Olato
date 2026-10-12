@@ -24,23 +24,28 @@ export function LocationSelector({ className = '' }: { className?: string }) {
     <>
       <button
         type="button"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label={`Change location, currently ${activeHub.name}`}
         onClick={() => setIsOpen(true)}
-        className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-[#E7E7EC] text-sm font-semibold text-[#15151A] hover:border-[#5B5CE2]/50 hover:bg-[#F7F7FA] transition-all duration-200 select-none shadow-sm ${className}`}
+        className={`inline-flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-[#E7E7EC] text-sm font-semibold text-[#15151A] hover:border-[#5B5CE2]/50 hover:bg-[#F7F7FA] focus-visible:outline-2 focus-visible:outline-[#5B5CE2] transition-all duration-200 select-none ${className}`}
       >
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="pulse-location absolute inline-flex h-full w-full rounded-full bg-[#19B87A] opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#19B87A]"></span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#EEF0FF]">
+          <MapPin className="w-4 h-4 text-[#5B5CE2]" />
         </span>
-
-        <MapPin className="w-4 h-4 text-[#5B5CE2] shrink-0" />
-        <span suppressHydrationWarning className="max-w-[130px] sm:max-w-[180px] truncate">{activeHub.name}</span>
+        <span className="min-w-0 text-left">
+          <span className="block text-[10px] leading-3 font-medium text-[#6F7078]">{isUsingGPS ? activeHub.city || 'Your location' : 'Browsing near'}</span>
+          <span suppressHydrationWarning className="block max-w-[105px] sm:max-w-[150px] truncate text-xs sm:text-sm leading-5">{activeHub.name}</span>
+        </span>
         <ChevronDown className="w-3.5 h-3.5 text-[#6F7078] shrink-0" />
       </button>
 
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Select Your Location">
         <div className="space-y-4">
           {/* Browser GPS Action */}
-          <div className="p-4 bg-[#EEF0FF] rounded-xl border border-[#5B5CE2]/20 flex items-center justify-between">
+          <p className="text-sm text-[#6F7078]">Choose an area to discover deals nearby.</p>
+          {isUsingGPS && <p className="text-xs text-[#6F7078]">GPS location: {activeHub.name}{activeHub.city && `, ${activeHub.city}`}</p>}
+          <div className="p-4 bg-[#EEF0FF] rounded-xl border border-[#5B5CE2]/20 flex flex-wrap gap-3 items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-[#5B5CE2] text-white rounded-xl">
                 <Navigation className="w-5 h-5" />
@@ -96,6 +101,7 @@ export function LocationSelector({ className = '' }: { className?: string }) {
               );
             })}
           </div>
+          <p className="text-[11px] text-[#6F7078]">Location names by <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">OpenStreetMap contributors</a>.</p>
         </div>
       </Modal>
     </>

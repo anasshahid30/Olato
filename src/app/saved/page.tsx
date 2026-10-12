@@ -1,5 +1,7 @@
 'use client';
 
+import { groupDiscounts } from '@/lib/group-discounts';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -82,7 +84,7 @@ export default function SavedDealsPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {activeSavedDeals.map((deal) => (
+                  {groupDiscounts(activeSavedDeals).map((deal) => (
                     <DiscountCard key={deal.id} discount={deal} />
                   ))}
                 </div>
@@ -103,7 +105,7 @@ export default function SavedDealsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 opacity-60">
-                  {expiredSavedDeals.map((deal) => (
+                  {groupDiscounts(expiredSavedDeals).map((deal) => (
                     <DiscountCard key={deal.id} discount={deal} />
                   ))}
                 </div>
