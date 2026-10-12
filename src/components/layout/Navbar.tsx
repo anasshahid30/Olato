@@ -112,6 +112,7 @@ export function Navbar({ onOpenAIModal }: NavbarProps) {
   const navLinks = [
     { href: '/', label: 'Discover', icon: <Home className="w-4 h-4" /> },
     { href: '/map', label: 'Nearby', icon: <Map className="w-4 h-4" /> },
+    { href: '/lucky-wheel', label: 'Lucky Wheel', icon: <Sparkles className="w-4 h-4" /> },
     { href: '/saved', label: 'Saved', badge: savedCount, icon: <Heart className="w-4 h-4" /> },
     { href: '/#categories', label: 'Categories', icon: <Grid className="w-4 h-4" /> },
   ];

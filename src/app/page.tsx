@@ -483,6 +483,64 @@ export default function OlatoHomePage() {
         </section>
 
         {/* ============================================================== */}
+        {/* 05.5 — LUCKY WHEEL CTA */}
+        {/* ============================================================== */}
+        <section className="py-20 relative overflow-hidden bg-gradient-to-br from-[#12131A] to-[#1C1D2A]">
+          {/* Ambient glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-[#5B5CE2]/20 blur-[120px] rounded-full pointer-events-none" />
+          <div className="absolute top-1/4 right-1/4 w-[200px] h-[200px] bg-[#10B981]/15 blur-[80px] rounded-full pointer-events-none" />
+
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-8 relative z-10">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-10">
+              <div className="space-y-4 max-w-lg">
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#5B5CE2]/20 text-xs font-black uppercase tracking-widest text-[#8B8CFE]">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  New Feature
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                  Can&apos;t decide where to eat?
+                </h2>
+                <p className="text-[#8E90A0] text-sm leading-relaxed">
+                  Pick up to 10 restaurants from the full Olato catalogue, give the wheel a spin, and let fate choose your next dining destination.
+                </p>
+                <Link href="/lucky-wheel">
+                  <MagneticButton
+                    variant="primary"
+                    size="md"
+                    icon={<Sparkles className="w-4 h-4" />}
+                  >
+                    Try the Lucky Wheel 🎡
+                  </MagneticButton>
+                </Link>
+              </div>
+
+              {/* Decorative wheel preview */}
+              <div className="shrink-0 w-64 h-64 rounded-full bg-[#5B5CE2]/10 border border-[#5B5CE2]/20 flex items-center justify-center relative">
+                <div className="absolute inset-3 rounded-full bg-[#5B5CE2]/8 border border-[#5B5CE2]/15 flex items-center justify-center">
+                  <div className="text-6xl animate-spin" style={{ animationDuration: '8s' }}>🎡</div>
+                </div>
+                {/* Orbiting dots */}
+                {['Café Aylanto', 'Paola\'s', 'The Spot', 'Butter & Co.', 'Ox & Grill'].map((name, i) => {
+                  const angle = (i / 5) * 2 * Math.PI;
+                  const r = 115;
+                  const x = 50 + (r * Math.cos(angle)) / 2.56;
+                  const y = 50 + (r * Math.sin(angle)) / 2.56;
+                  return (
+                    <div
+                      key={name}
+                      className="absolute bg-white/10 text-white text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap backdrop-blur-sm"
+                      style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
+                    >
+                      {name}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ============================================================== */}
         {/* 06 — MAP / NEARBY EXPERIENCE */}
         {/* ============================================================== */}
         <section className="py-20 bg-white border-y border-[#E7E7EC]" id="map">
